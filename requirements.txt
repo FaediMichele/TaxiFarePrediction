@@ -3,3 +3,5 @@ osmnx
 matplotlib
 polars
 scipy
+sklearn
+py-staticmaps
