@@ -15,8 +15,8 @@ def load_data() -> pl.LazyFrame:
         (pl.col("dropoff_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
         (pl.col("fare_amount") > 0) &
         (pl.col("passenger_count") > 0)).with_columns([
-            pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)
-])
+            pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
+        ).drop('key')
 
 def get_image_from_coordinate(points_area, sizes):
     context = staticmaps.Context()
