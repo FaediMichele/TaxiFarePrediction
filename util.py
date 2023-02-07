@@ -1,5 +1,8 @@
+import math
+
 import polars as pl
 import staticmaps
+import matplotlib.pyplot as plt
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
@@ -38,3 +41,13 @@ def get_image_from_coordinate(points_area, sizes):
         )
     )
     return context.render_pillow(*sizes)
+
+
+def plot_distributions(dataframe: pl.DataFrame, num_cols=4):
+    """Plot the distribution for each feature in a multiplot."""
+    num_rows = math.ceil(len(dataframe.columns) / num_cols)
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(16, 16))
+    for i, column in enumerate(dataframe.columns):
+        ax = axs[i // num_cols, i % num_cols]
+        ax.hist(dataframe[column])
+        ax.title.set_text(column)
