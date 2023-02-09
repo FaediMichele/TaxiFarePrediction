@@ -50,7 +50,7 @@ def crop_image_with_borders(image):
     left = 0
     right = width
     bottom = height
-    
+
     for k in range(0,width):
         pixel = image.getpixel((k, height//2))
         if pixel[0] == 0 and pixel[1] == 0 and pixel[2] == 0:
@@ -73,6 +73,19 @@ def crop_image_with_borders(image):
             break
 
     return image.crop((left, top, right, bottom))
+
+
+def normalize_points(x, y, points_area, image_size):
+    """Return copies of x and y, normalized based on image size.
+
+    Can be used to plot points on image.
+    """
+    x_min, x_max, y_min, y_max = points_area
+
+    x_norm = image_size[0] * (x - x_min) / (x_max - x_min)
+    y_norm = image_size[1] * (y - y_min) / (y_max - y_min)
+
+    return x_norm, y_norm
 
 
 def plot_distributions(dataframe: pl.DataFrame, num_cols=4):
@@ -102,7 +115,7 @@ def regula_falsi(f, a, b, tol):
         else:
             b = x
             fb = fx
-    
+
     return x, fx
 
 def find_latitude_correction(p, additional_space, b, tol=1e-4):
@@ -116,6 +129,6 @@ def find_latitude_correction(p, additional_space, b, tol=1e-4):
 def distance(p1, p2):
     lon1, lat1 = math.radians(p1[0]), math.radians(p1[1])
     lon2, lat2 = math.radians(p2[0]), math.radians(p2[1])
-    
+
     a = math.sin((lat1-lat2)/2)**2 + math.cos(lat1)*math.cos(lat2)*(math.sin((lon1-lon2)/2)**2)
     return math.atan2(math.sqrt(a), math.sqrt(1-a))*2*6371
