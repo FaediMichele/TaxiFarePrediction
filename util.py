@@ -1,14 +1,15 @@
 import math
+from functools import lru_cache
 
 import polars as pl
 import staticmaps
 import matplotlib.pyplot as plt
-import math
+import PIL.Image
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
 
-
+NEW_YORK_MAP_IMAGE_SIZE = (2048, 2048)
 
 
 def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
@@ -132,3 +133,63 @@ def distance(p1, p2):
 
     a = math.sin((lat1-lat2)/2)**2 + math.cos(lat1)*math.cos(lat2)*(math.sin((lon1-lon2)/2)**2)
     return math.atan2(math.sqrt(a), math.sqrt(1-a))*2*6371
+
+
+@lru_cache
+def new_york_map(filename='map.png') -> PIL.Image.Image:
+    """Retrieve a cached image of the New York map."""
+    return PIL.Image.open(filename)
+
+
+def point_on_ocean(x: float, y: float, image: PIL.Image.Image,
+                   ocean_color=(170, 211, 223), color_sensitivity=5) -> bool:
+    """Return whether a point is appears to be on the ocean."""
+    try:
+        pixel = image.getpixel((round(x), round(y)))
+    except IndexError:
+        print(f'{x}, {y} is out of range, image size '
+             f'{image.width}, {image.height}')
+        return False
+
+    return math.dist(ocean_color, pixel) <= color_sensitivity
+
+
+def polars_point_on_ocean(coords: pl.Series):
+    """Apply function for polars dataframes."""
+    x = coords.struct.field('pickup_longitude').append(
+        coords.struct.field('dropoff_longitude'))
+    y = coords.struct.field('pickup_latitude').append(
+        coords.struct.field('dropoff_latitude'))
+    points_area = x.min(), x.max(), y.min(), y.max()
+
+    # Make the area a square
+    width = distance((points_area[0],points_area[2]),
+                     (points_area[1],points_area[2]))
+    height = distance((points_area[0],points_area[2]),
+                      (points_area[0],points_area[3]))
+
+    additional_space = (width - height)/2
+
+    new_lat_min, _ = find_latitude_correction((points_area[0], points_area[2]),
+                                              additional_space, b=-1)
+    new_lat_max, _ = find_latitude_correction((points_area[0], points_area[3]),
+                                              additional_space, b=1)
+
+    points_area = points_area[0], points_area[1], new_lat_min, new_lat_max
+
+    del x, y
+
+    pickup_x, pickup_y = normalize_points(coords.struct.field('pickup_latitude'),
+                                          coords.struct.field('pickup_longitude'),
+                                          points_area, NEW_YORK_MAP_IMAGE_SIZE)
+
+    dropoff_x, dropoff_y = normalize_points(coords.struct.field('dropoff_latitude'),
+                                            coords.struct.field('dropoff_longitude'),
+                                            points_area,
+                                            NEW_YORK_MAP_IMAGE_SIZE)
+
+    image = new_york_map()
+
+    return [
+        point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
+        for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)]
