@@ -1,5 +1,6 @@
 import math
 from functools import lru_cache
+from typing import Callable
 
 import polars as pl
 import staticmaps
@@ -23,7 +24,8 @@ def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
             pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
         ).drop('key')
 
-def get_image_from_coordinate(points_area, sizes):
+def get_image_from_coordinate(points_area: tuple[float,float,float,float], sizes:tuple[float,float]) -> PIL.Image.Image:
+    """Download the image from a Open Street Map of an area (left, right,down,up) coordinate with a specific size"""
     context = staticmaps.Context()
     context.set_tile_provider(staticmaps.tile_provider_OSM)
     left, right, down, up = points_area
@@ -45,7 +47,8 @@ def get_image_from_coordinate(points_area, sizes):
     )
     return context.render_pillow(*sizes)
 
-def crop_image_with_borders(image):
+def crop_image_with_borders(image:PIL.Image.Image) -> PIL.Image.Image:
+    """Crop the image with a rectangle inside returning only the image inside the rectangle"""
     width, height = image.size
     top = 0
     left = 0
@@ -76,7 +79,8 @@ def crop_image_with_borders(image):
     return image.crop((left, top, right, bottom))
 
 
-def normalize_points(x, y, points_area, image_size):
+def normalize_points(x: pl.Series, y: pl.Series, points_area: tuple[float, float, float, float],
+    image_size: tuple[float,float]) -> tuple[pl.Series, pl.Series]:
     """Return copies of x and y, normalized based on image size.
 
     Can be used to plot points on image.
@@ -98,7 +102,11 @@ def plot_distributions(dataframe: pl.DataFrame, num_cols=4):
         ax.hist(dataframe[column])
         ax.title.set_text(column)
 
-def regula_falsi(f, a, b, tol):
+def regula_falsi(f: Callable[[float], float], a:float, b:float, tol:float) -> tuple[float,float]:
+    """Compute the zero of a function with the given tolerance and two initial points
+    
+    return the zero position and it's approximated error.
+    """
     nMax = math.ceil(math.log(abs(b-a)/tol)/math.log(2))
     fa = f(a)
     fb = f(b)
@@ -119,7 +127,11 @@ def regula_falsi(f, a, b, tol):
 
     return x, fx
 
-def find_latitude_correction(p, additional_space, b, tol=1e-4):
+def find_latitude_correction(p: tuple[float, float], additional_space: float, b:float, tol=1e-4)-> tuple[float, float]:
+    """Calculate the new latitude above or below(sign of b) additional_space(in km)
+    
+    return the new latitude and the approximated error.
+    """
     f = lambda x: distance(p, (p[0], x)) - additional_space
     a = p[1]
     b = a + b
@@ -127,7 +139,8 @@ def find_latitude_correction(p, additional_space, b, tol=1e-4):
 
 
 
-def distance(p1, p2):
+def distance(p1: tuple[float, float], p2: tuple[float, float]) -> float:
+    """Calculate distance in km between two point on earth"""
     lon1, lat1 = math.radians(p1[0]), math.radians(p1[1])
     lon2, lat2 = math.radians(p2[0]), math.radians(p2[1])
 
@@ -151,45 +164,27 @@ def point_on_ocean(x: float, y: float, image: PIL.Image.Image,
              f'{image.width}, {image.height}')
         return False
 
-    return math.dist(ocean_color, pixel) <= color_sensitivity
+    return math.dist(ocean_color, pixel[:3]) <= color_sensitivity
 
 
-def polars_point_on_ocean(coords: pl.Series):
+def polars_point_on_ocean(points_area):
     """Apply function for polars dataframes."""
-    x = coords.struct.field('pickup_longitude').append(
-        coords.struct.field('dropoff_longitude'))
-    y = coords.struct.field('pickup_latitude').append(
-        coords.struct.field('dropoff_latitude'))
-    points_area = x.min(), x.max(), y.min(), y.max()
 
-    # Make the area a square
-    width = distance((points_area[0],points_area[2]),
-                     (points_area[1],points_area[2]))
-    height = distance((points_area[0],points_area[2]),
-                      (points_area[0],points_area[3]))
+    def return_function(coords: pl.Series):
 
-    additional_space = (width - height)/2
+        pickup_x, pickup_y = normalize_points(coords.struct.field('pickup_longitude'),
+                                            coords.struct.field('dropoff_latitude'),
+                                            points_area, NEW_YORK_MAP_IMAGE_SIZE)
 
-    new_lat_min, _ = find_latitude_correction((points_area[0], points_area[2]),
-                                              additional_space, b=-1)
-    new_lat_max, _ = find_latitude_correction((points_area[0], points_area[3]),
-                                              additional_space, b=1)
+        dropoff_x, dropoff_y = normalize_points(coords.struct.field('pickup_longitude'),
+                                                coords.struct.field('dropoff_latitude'),
+                                                points_area,
+                                                NEW_YORK_MAP_IMAGE_SIZE)
 
-    points_area = points_area[0], points_area[1], new_lat_min, new_lat_max
+        image = new_york_map()
 
-    del x, y
-
-    pickup_x, pickup_y = normalize_points(coords.struct.field('pickup_latitude'),
-                                          coords.struct.field('pickup_longitude'),
-                                          points_area, NEW_YORK_MAP_IMAGE_SIZE)
-
-    dropoff_x, dropoff_y = normalize_points(coords.struct.field('dropoff_latitude'),
-                                            coords.struct.field('dropoff_longitude'),
-                                            points_area,
-                                            NEW_YORK_MAP_IMAGE_SIZE)
-
-    image = new_york_map()
-
-    return [
-        point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
-        for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)]
+        return pl.Series([
+            point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
+            for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)
+        ])
+    return return_function
