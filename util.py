@@ -158,33 +158,46 @@ def point_on_ocean(x: float, y: float, image: PIL.Image.Image,
                    ocean_color=(170, 211, 223), color_sensitivity=5) -> bool:
     """Return whether a point is appears to be on the ocean."""
     try:
-        pixel = image.getpixel((round(x), round(y)))
+        pixel = image.getpixel((round(x), image.size[1] - round(y)))
     except IndexError:
-        print(f'{x}, {y} is out of range, image size '
-             f'{image.width}, {image.height}')
+        # print(f'{x}, {y} is out of range, image size '
+        #      f'{image.width}, {image.height}')
         return False
 
     return math.dist(ocean_color, pixel[:3]) <= color_sensitivity
 
 
-def polars_point_on_ocean(points_area):
+def polars_point_on_ocean(points_area, only_pickup=True, both=True):
     """Apply function for polars dataframes."""
 
     def return_function(coords: pl.Series):
-
-        pickup_x, pickup_y = normalize_points(coords.struct.field('pickup_longitude'),
-                                            coords.struct.field('dropoff_latitude'),
-                                            points_area, NEW_YORK_MAP_IMAGE_SIZE)
-
-        dropoff_x, dropoff_y = normalize_points(coords.struct.field('pickup_longitude'),
-                                                coords.struct.field('dropoff_latitude'),
-                                                points_area,
-                                                NEW_YORK_MAP_IMAGE_SIZE)
-
         image = new_york_map()
 
-        return pl.Series([
-            point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
-            for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)
-        ])
+        if only_pickup or both:
+            pickup_x, pickup_y = normalize_points(coords.struct.field('pickup_longitude'),
+                                                coords.struct.field('pickup_latitude'),
+                                                points_area, image.size)
+
+        if not only_pickup or both:
+            dropoff_x, dropoff_y = normalize_points(coords.struct.field('dropoff_longitude'),
+                                                    coords.struct.field('dropoff_latitude'),
+                                                    points_area, image.size)
+
+        
+        if both:
+            return pl.Series([
+                point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
+                for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)
+            ])
+        
+        if only_pickup:
+            return pl.Series([
+                point_on_ocean(x, y, image)
+                for x, y in zip(pickup_x, pickup_y)
+            ])
+        else:
+            return pl.Series([
+                point_on_ocean(d_x, d_y, image)
+                for d_x, d_y in zip(dropoff_x, dropoff_y)
+            ])
     return return_function
