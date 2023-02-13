@@ -42,7 +42,7 @@ def get_image_from_coordinate(points_area: tuple[float,float,float,float], sizes
             [staticmaps.create_latlng(lat, lng) for lat, lng in polygon],
             fill_color=staticmaps.TRANSPARENT,
             width=2,
-            color=staticmaps.BLACK,
+            color=staticmaps.TRANSPARENT,
         )
     )
     return context.render_pillow(*sizes)
@@ -57,22 +57,22 @@ def crop_image_with_borders(image:PIL.Image.Image) -> PIL.Image.Image:
 
     for k in range(0,width):
         pixel = image.getpixel((k, height//2))
-        if pixel[0] == 0 and pixel[1] == 0 and pixel[2] == 0:
+        if pixel[3] == 0:
             left = k
             break
     for k in reversed(range(0,width)):
         pixel = image.getpixel((k, height//2))
-        if pixel[0] == 0 and pixel[1] == 0 and pixel[2] == 0:
+        if pixel[3] == 0:
             right = k
             break
     for k in range(0,height):
         pixel = image.getpixel((width//2, k))
-        if pixel[0] == 0 and pixel[1] == 0 and pixel[2] == 0:
+        if pixel[3] == 0:
             top = k
             break
     for k in reversed(range(0,height)):
-        pixel = image.getpixel((width//2, k))
-        if pixel[0] == 0 and pixel[1] == 0 and pixel[2] == 0:
+        pixel = image.getpixel((left, k))
+        if pixel[3] == 0:
             bottom = k
             break
 
