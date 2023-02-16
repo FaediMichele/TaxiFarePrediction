@@ -1,6 +1,9 @@
-"""Preprocess the given dataset and dump it to a parquet file."""
+"""Preprocess the given dataset and dump it to a parquet file.
+
+Entrypoint, run with ``python -m texifare.preprocess [...]``
+"""
 import argparse
-import util
+import taxifare.data as data
 
 DESCRIPTION = __doc__
 
@@ -13,7 +16,7 @@ class Namespace:
 
 def main(namespace: Namespace):
     """Process the given arguments."""
-    df = util.load_data(namespace.input_path)
+    df = data.load_data(namespace.input_path)
     df.sink_parquet(namespace.output_path)
 
 

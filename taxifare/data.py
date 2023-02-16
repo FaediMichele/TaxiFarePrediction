@@ -5,7 +5,8 @@ from typing import Callable
 import polars as pl
 import matplotlib.pyplot as plt
 import PIL.Image
-import basemap
+
+import taxifare.basemap as basemap
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
@@ -50,7 +51,7 @@ def plot_distributions(dataframe: pl.DataFrame, num_cols=4):
 
 def regula_falsi(f: Callable[[float], float], a:float, b:float, tol:float) -> tuple[float,float]:
     """Compute the zero of a function with the given tolerance and two initial points
-    
+
     return the zero position and it's approximated error.
     """
     nMax = math.ceil(math.log(abs(b-a)/tol)/math.log(2))
@@ -75,7 +76,7 @@ def regula_falsi(f: Callable[[float], float], a:float, b:float, tol:float) -> tu
 
 def find_latitude_correction(p: tuple[float, float], additional_space: float, b:float, tol=1e-4)-> tuple[float, float]:
     """Calculate the new latitude above or below(sign of b) additional_space(in km)
-    
+
     return the new latitude and the approximated error.
     """
     f = lambda x: distance(p, (p[0], x)) - additional_space
@@ -101,7 +102,7 @@ def new_york_map(points_area) -> PIL.Image.Image:
     return basemap.image(top, right, bottom, left, zoom=10, url=IMAGE_API_URL)
 
 
-def point_on_ocean(x: float, y: float, image: PIL.Image.Image, 
+def point_on_ocean(x: float, y: float, image: PIL.Image.Image,
                     ocean_color=(212,218,220), color_sensitivity=5) -> bool:
     """Return whether a point is appears to be on the ocean."""
     try:
@@ -130,13 +131,13 @@ def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
             dropoff_x, dropoff_y = normalize_points(coords.struct.field('dropoff_longitude'),
                                                     coords.struct.field('dropoff_latitude'),
                                                     points_area, image.size)
-        
+
         if pickup and dropoff:
             return pl.Series([
                 point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
                 for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)
             ])
-        
+
         if pickup:
             return pl.Series([
                 point_on_ocean(x, y, image)
