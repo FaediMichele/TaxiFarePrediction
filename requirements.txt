@@ -5,3 +5,4 @@ polars
 scipy
 sklearn
 pyarrow
+requests
