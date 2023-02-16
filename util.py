@@ -3,14 +3,14 @@ from functools import lru_cache
 from typing import Callable
 
 import polars as pl
-import staticmaps
 import matplotlib.pyplot as plt
 import PIL.Image
+import basemap
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
 
-NEW_YORK_MAP_IMAGE_SIZE = (2048, 2048)
+IMAGE_API_URL = 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'
 
 
 def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
@@ -23,60 +23,6 @@ def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
         (pl.col("passenger_count") > 0)).with_columns([
             pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
         ).drop('key')
-
-def get_image_from_coordinate(points_area: tuple[float,float,float,float], sizes:tuple[float,float]) -> PIL.Image.Image:
-    """Download the image from a Open Street Map of an area (left, right,down,up) coordinate with a specific size"""
-    context = staticmaps.Context()
-    context.set_tile_provider(staticmaps.tile_provider_OSM)
-    left, right, down, up = points_area
-    polygon = [
-        (down, left),
-        (down, right),
-        (up, right),
-        (up, left),
-        (down, left)
-    ]
-
-    context.add_object(
-        staticmaps.Area(
-            [staticmaps.create_latlng(lat, lng) for lat, lng in polygon],
-            fill_color=staticmaps.TRANSPARENT,
-            width=2,
-            color=staticmaps.TRANSPARENT,
-        )
-    )
-    return context.render_pillow(*sizes)
-
-def crop_image_with_borders(image:PIL.Image.Image) -> PIL.Image.Image:
-    """Crop the image with a rectangle inside returning only the image inside the rectangle"""
-    width, height = image.size
-    top = 0
-    left = 0
-    right = width
-    bottom = height
-
-    for k in range(0,width):
-        pixel = image.getpixel((k, height//2))
-        if pixel[3] == 0:
-            left = k
-            break
-    for k in reversed(range(0,width)):
-        pixel = image.getpixel((k, height//2))
-        if pixel[3] == 0:
-            right = k
-            break
-    for k in range(0,height):
-        pixel = image.getpixel((width//2, k))
-        if pixel[3] == 0:
-            top = k
-            break
-    for k in reversed(range(0,height)):
-        pixel = image.getpixel((left, k))
-        if pixel[3] == 0:
-            bottom = k
-            break
-
-    return image.crop((left, top, right, bottom))
 
 
 def normalize_points(x: pl.Series, y: pl.Series, points_area: tuple[float, float, float, float],
@@ -149,48 +95,49 @@ def distance(p1: tuple[float, float], p2: tuple[float, float]) -> float:
 
 
 @lru_cache
-def new_york_map(filename='map.png') -> PIL.Image.Image:
+def new_york_map(points_area) -> PIL.Image.Image:
     """Retrieve a cached image of the New York map."""
-    return PIL.Image.open(filename)
+    left, right, bottom, top = points_area
+    return basemap.image(top, right, bottom, left, zoom=10, url=IMAGE_API_URL)
 
 
-def point_on_ocean(x: float, y: float, image: PIL.Image.Image,
-                   ocean_color=(170, 211, 223), color_sensitivity=5) -> bool:
+def point_on_ocean(x: float, y: float, image: PIL.Image.Image, 
+                    ocean_color=(212,218,220), color_sensitivity=5) -> bool:
     """Return whether a point is appears to be on the ocean."""
     try:
         pixel = image.getpixel((round(x), image.size[1] - round(y)))
     except IndexError:
-        # print(f'{x}, {y} is out of range, image size '
-        #      f'{image.width}, {image.height}')
         return False
 
     return math.dist(ocean_color, pixel[:3]) <= color_sensitivity
 
 
-def polars_point_on_ocean(points_area, only_pickup=True, both=True):
+def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
     """Apply function for polars dataframes."""
 
-    def return_function(coords: pl.Series):
-        image = new_york_map()
+    if not pickup and not dropoff:
+        raise Exception("no field passed")
 
-        if only_pickup or both:
+    def return_function(coords: pl.Series):
+        image = new_york_map(points_area)
+
+        if pickup:
             pickup_x, pickup_y = normalize_points(coords.struct.field('pickup_longitude'),
                                                 coords.struct.field('pickup_latitude'),
                                                 points_area, image.size)
 
-        if not only_pickup or both:
+        if dropoff:
             dropoff_x, dropoff_y = normalize_points(coords.struct.field('dropoff_longitude'),
                                                     coords.struct.field('dropoff_latitude'),
                                                     points_area, image.size)
-
         
-        if both:
+        if pickup and dropoff:
             return pl.Series([
                 point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
                 for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)
             ])
         
-        if only_pickup:
+        if pickup:
             return pl.Series([
                 point_on_ocean(x, y, image)
                 for x, y in zip(pickup_x, pickup_y)

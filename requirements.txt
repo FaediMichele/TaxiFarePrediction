@@ -4,5 +4,4 @@ matplotlib
 polars
 scipy
 sklearn
-py-staticmaps
 pyarrow
