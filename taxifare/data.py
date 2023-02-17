@@ -1,10 +1,13 @@
+import datetime
 import math
 from functools import lru_cache
 from typing import Callable
 
+import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
 import PIL.Image
+from sklearn.linear_model import LinearRegression
 
 import taxifare.basemap as basemap
 
@@ -149,3 +152,38 @@ def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
                 for d_x, d_y in zip(dropoff_x, dropoff_y)
             ])
     return return_function
+
+
+def months_from(from_: datetime.datetime, to: datetime.datetime) -> int:
+    """Return the total number of months between the two dates."""
+    return (to.year - from_.year) * 12 + to.month
+
+
+def detrend(data: pl.DataFrame,
+            estimator1: LinearRegression, estimator2: LinearRegression,
+            threshold: pl.Datetime,
+            date_column='pickup_datetime',
+            trended_column='fare_amount') -> pl.DataFrame:
+    """Detrend dataframe.
+
+    Two estimators are used based on a treshold date. The output
+    shape is: ``(rows, 2)``, where ``rows`` is the number of input rows
+    and ``2`` is given by the date column and the detrended column.
+
+    The estimators are used on predictions month-wise (i.e. the first
+    month in the series is the index 0, and so on).
+    """
+    min_date = data[date_column].min()
+    max_date = data[date_column].max()
+    threshold = pl.select(threshold)[0, 0]      # Cast to datetime.datetime
+
+    features = np.array(range(months_from(min_date, max_date))).reshape(-1, 1)
+    split = months_from(min_date, threshold) - 1
+
+    predictions = np.concatenate((estimator1.predict(features[:split]),
+                                  estimator2.predict(features[split:])))
+
+    return data.select(
+        [date_column,
+         pl.col(trended_column)
+         - pl.col(date_column).apply(lambda d: predictions[months_from(min_date, d) - 1])])
