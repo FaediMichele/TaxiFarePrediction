@@ -1,11 +1,15 @@
+import datetime
 import math
 from functools import lru_cache
 from typing import Callable
 
+import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
 import PIL.Image
-import basemap
+from sklearn.linear_model import LinearRegression
+
+import taxifare.basemap as basemap
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
@@ -50,7 +54,7 @@ def plot_distributions(dataframe: pl.DataFrame, num_cols=4):
 
 def regula_falsi(f: Callable[[float], float], a:float, b:float, tol:float) -> tuple[float,float]:
     """Compute the zero of a function with the given tolerance and two initial points
-    
+
     return the zero position and it's approximated error.
     """
     nMax = math.ceil(math.log(abs(b-a)/tol)/math.log(2))
@@ -75,7 +79,7 @@ def regula_falsi(f: Callable[[float], float], a:float, b:float, tol:float) -> tu
 
 def find_latitude_correction(p: tuple[float, float], additional_space: float, b:float, tol=1e-4)-> tuple[float, float]:
     """Calculate the new latitude above or below(sign of b) additional_space(in km)
-    
+
     return the new latitude and the approximated error.
     """
     f = lambda x: distance(p, (p[0], x)) - additional_space
@@ -101,7 +105,7 @@ def new_york_map(points_area) -> PIL.Image.Image:
     return basemap.image(top, right, bottom, left, zoom=10, url=IMAGE_API_URL)
 
 
-def point_on_ocean(x: float, y: float, image: PIL.Image.Image, 
+def point_on_ocean(x: float, y: float, image: PIL.Image.Image,
                     ocean_color=(212,218,220), color_sensitivity=5) -> bool:
     """Return whether a point is appears to be on the ocean."""
     try:
@@ -130,13 +134,13 @@ def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
             dropoff_x, dropoff_y = normalize_points(coords.struct.field('dropoff_longitude'),
                                                     coords.struct.field('dropoff_latitude'),
                                                     points_area, image.size)
-        
+
         if pickup and dropoff:
             return pl.Series([
                 point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
                 for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)
             ])
-        
+
         if pickup:
             return pl.Series([
                 point_on_ocean(x, y, image)
@@ -148,3 +152,38 @@ def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
                 for d_x, d_y in zip(dropoff_x, dropoff_y)
             ])
     return return_function
+
+
+def months_from(from_: datetime.datetime, to: datetime.datetime) -> int:
+    """Return the total number of months between the two dates."""
+    return (to.year - from_.year) * 12 + to.month
+
+
+def detrend(data: pl.DataFrame,
+            estimator1: LinearRegression, estimator2: LinearRegression,
+            threshold: pl.Datetime,
+            date_column='pickup_datetime',
+            trended_column='fare_amount') -> pl.DataFrame:
+    """Detrend dataframe.
+
+    Two estimators are used based on a treshold date. The output
+    shape is: ``(rows, 2)``, where ``rows`` is the number of input rows
+    and ``2`` is given by the date column and the detrended column.
+
+    The estimators are used on predictions month-wise (i.e. the first
+    month in the series is the index 0, and so on).
+    """
+    min_date = data[date_column].min()
+    max_date = data[date_column].max()
+    threshold = pl.select(threshold)[0, 0]      # Cast to datetime.datetime
+
+    features = np.array(range(months_from(min_date, max_date))).reshape(-1, 1)
+    split = months_from(min_date, threshold) - 1
+
+    predictions = np.concatenate((estimator1.predict(features[:split]),
+                                  estimator2.predict(features[split:])))
+
+    return data.select(
+        [date_column,
+         pl.col(trended_column)
+         - pl.col(date_column).apply(lambda d: predictions[months_from(min_date, d) - 1])])
