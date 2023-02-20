@@ -10,6 +10,7 @@ import PIL.Image
 from sklearn.linear_model import LinearRegression
 
 import taxifare.basemap as basemap
+from tqdm import tqdm
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
@@ -138,18 +139,18 @@ def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
         if pickup and dropoff:
             return pl.Series([
                 point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
-                for x, y, d_x, d_y in zip(pickup_x, pickup_y, dropoff_x, dropoff_y)
+                for x, y, d_x, d_y in tqdm(zip(pickup_x, pickup_y, dropoff_x, dropoff_y), total=len(pickup_x))
             ])
 
         if pickup:
             return pl.Series([
                 point_on_ocean(x, y, image)
-                for x, y in zip(pickup_x, pickup_y)
+                for x, y in tqdm(zip(pickup_x, pickup_y), total=len(pickup_x))
             ])
         else:
             return pl.Series([
                 point_on_ocean(d_x, d_y, image)
-                for d_x, d_y in zip(dropoff_x, dropoff_y)
+                for d_x, d_y in tqdm(zip(dropoff_x, dropoff_y), total=len(dropoff_x))
             ])
     return return_function
 

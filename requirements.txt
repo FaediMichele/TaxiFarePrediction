@@ -7,3 +7,7 @@ sklearn
 pyarrow
 requests
 seaborn
+tqdm
+rasterio
+shapely
+numpy
