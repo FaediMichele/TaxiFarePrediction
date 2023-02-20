@@ -188,3 +188,25 @@ def detrend(data: pl.DataFrame,
         [date_column,
          pl.col(trended_column)
          - pl.col(date_column).apply(lambda d: predictions[months_from(min_date, d) - 1])])
+
+
+def expand_time_features(data: pl.DataFrame,
+                         gap_threshold: pl.Datetime,
+                         date_column='pickup_datetime') -> pl.DataFrame:
+    """Return a new dataframe with properlu engineered time features.
+
+    In particular, remove general datetime column in favor of: year,
+    month, weekday, hour, 2012 gap boolean, weekend boolean.
+    Year, month, weekday and hour are simple ordinal encodings.
+    """
+    if date_column not in data.columns:
+        print(f'No column named {date_column}, skipping')
+        return data
+
+    return (data.with_columns(year=pl.col(date_column).dt.year(),
+                              month=pl.col(date_column).dt.month(),
+                              weekday=pl.col(date_column).dt.weekday(),
+                              hour=pl.col(date_column).dt.hour(),
+                              after2012=pl.col(date_column) >= gap_threshold,
+                              weekend=pl.col(date_column).dt.weekday() > 5)
+            .drop(date_column))
