@@ -30,7 +30,6 @@ def get_color(image, x, y, shape):
     try:
         return image[shape[1] - round(y), round(x)]
     except Exception as e:
-        print(str(e))
         return 0
 
 def point_boroughs(image, colors, points_area, prefix: str = ""):
