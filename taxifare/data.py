@@ -1,7 +1,7 @@
 import datetime
 import math
 from functools import lru_cache
-from typing import Callable
+from typing import Callable, Tuple
 
 import numpy as np
 import polars as pl
@@ -97,6 +97,27 @@ def distance(p1: tuple[float, float], p2: tuple[float, float]) -> float:
 
     a = math.sin((lat1-lat2)/2)**2 + math.cos(lat1)*math.cos(lat2)*(math.sin((lon1-lon2)/2)**2)
     return math.atan2(math.sqrt(a), math.sqrt(1-a))*2*6371
+
+
+def get_square_area(x: pl.Series, y: pl.Series
+                    ) -> Tuple[float, float, float, float]:
+    """Given a sequence of points the min square area containing them."""
+    points_area = x.min(), x.max(), y.min(), y.max()
+
+    # Make the area a square
+    width = distance((points_area[0], points_area[2]),
+                     (points_area[1], points_area[2]))
+    height = distance((points_area[0], points_area[2]),
+                      (points_area[0], points_area[3]))
+
+    additional_space = (width - height) / 2
+
+    new_lat_min, _ = find_latitude_correction((points_area[0], points_area[2]),
+                                              additional_space, b=-1)
+    new_lat_max, _ = find_latitude_correction((points_area[0], points_area[3]),
+                                              additional_space, b=1)
+
+    return points_area[0], points_area[1], new_lat_min, new_lat_max
 
 
 @lru_cache
