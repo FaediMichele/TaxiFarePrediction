@@ -4,6 +4,7 @@ Entrypoint, run with ``python -m texifare.preprocess [...]``
 """
 import argparse
 import enum
+from typing import Optional
 
 import polars as pl
 
@@ -29,6 +30,7 @@ class Namespace:
     input_path: str
     output_path: str
     preprocessing_flags: PreprocessingFlags = PreprocessingFlags.BASE
+    samples: Optional[int] = None
 
 
 class AddFlagEnumAction(argparse.Action):
@@ -46,7 +48,13 @@ class AddFlagEnumAction(argparse.Action):
 def preprocess(namespace: Namespace) -> pl.DataFrame:
     """Process the given arguments and return dataframe."""
     # Initial preprocessing
-    df = data.load_data(namespace.input_path).collect()
+    df = data.load_data(namespace.input_path)
+
+    # Select specified number of samples
+    if namespace.samples is None:
+        df = df.collect()
+    else:
+        df = df.fetch(namespace.samples)
 
     # Time features
     if PreprocessingFlags.TIME_FEATURES in namespace.preprocessing_flags:
@@ -93,6 +101,7 @@ if __name__ == '__main__':
                         metavar='OPERATION', dest='preprocessing_flags',
                         action=AddFlagEnumAction,
                         choices=PreprocessingFlags.__members__.keys())
+    parser.add_argument('-n', '--num-samples', type=int, dest='samples')
 
     args = parser.parse_args(namespace=Namespace())
     dump_preprocess(args)
