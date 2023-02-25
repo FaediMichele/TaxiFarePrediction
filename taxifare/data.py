@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
+TREND_DATETIME_GAP = pl.datetime(2012, 9, 1)
 
 IMAGE_API_URL = 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'
 
@@ -212,7 +213,7 @@ def detrend(data: pl.DataFrame,
 
 
 def expand_time_features(data: pl.DataFrame,
-                         gap_threshold: pl.Datetime,
+                         gap_threshold: pl.Datetime = TREND_DATETIME_GAP,
                          date_column='pickup_datetime') -> pl.DataFrame:
     """Return a new dataframe with properlu engineered time features.
 
