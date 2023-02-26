@@ -9,6 +9,7 @@ from typing import Optional
 import polars as pl
 
 import taxifare.data as data
+import taxifare.boroughs as boroughs
 
 DESCRIPTION = __doc__
 
@@ -22,7 +23,7 @@ class PreprocessingFlags(enum.IntFlag):
     TIME_FEATURES = enum.auto()
     PASSENGER_COUNT_OUTLIERS = enum.auto()
     OCEAN_OUTLIERS = enum.auto()
-    # boroughs...
+    BOROUGH_OUTLIERS = enum.auto()
 
 
 class Namespace:
@@ -83,6 +84,31 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
             ).get_columns()[0].alias('ocean_dropoff')
 
         df = df.filter(~ocean_pickup & ~ocean_dropoff)
+
+    # Boroughs
+    if PreprocessingFlags.BOROUGH_OUTLIERS in namespace.preprocessing_flags:
+        x = df['pickup_longitude'].append(df['dropoff_longitude'])
+        y = df['pickup_latitude'].append(df['dropoff_latitude'])
+        points_area = data.get_square_area(x, y)
+
+        boros = boroughs.load()
+        boros_image, boros_colors = boroughs.get_image_boroughs(boros,
+                                                                points_area)
+        df = (
+            df.with_columns(
+                pickup_borough=pl.struct(['pickup_longitude',
+                                          'pickup_latitude'])
+                .map(boroughs.point_boroughs(boros_image, boros_colors,
+                                             points_area, "pickup_")),
+                dropoff_borough=pl.struct(['dropoff_longitude',
+                                           'dropoff_latitude'])
+                .map(boroughs.point_boroughs(boros_image, boros_colors,
+                                             points_area, "dropoff_")))
+            .filter((pl.col('pickup_borough') != 'None')
+                    & (pl.col('dropoff_borough') != 'None'))
+        )
+
+        df = pl.get_dummies(df, columns=('pickup_borough', 'dropoff_borough'))
 
     return df
 
