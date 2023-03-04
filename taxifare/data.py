@@ -25,7 +25,7 @@ def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
         (pl.col("pickup_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
         (pl.col("dropoff_longitude").is_between(*NEW_YORK_AREA[1], closed='both')) &
         (pl.col("dropoff_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
-        (pl.col("fare_amount") > 0) &
+        # (pl.col("fare_amount") > 0) &
         (pl.col("passenger_count") > 0)).with_columns([
             pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
         ).drop('key')
@@ -232,3 +232,19 @@ def expand_time_features(data: pl.DataFrame,
                               after2012=pl.col(date_column) >= gap_threshold,
                               weekend=pl.col(date_column).dt.weekday() > 5)
             .drop(date_column))
+
+
+def split(df: pl.DataFrame, valid, test, seed=1,
+          shuffle=True) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """"""
+    if shuffle:
+        df = df.select(pl.all().shuffle(seed))
+
+    valid_size = int(len(df) * valid)
+    test_size = int(len(df) * test)
+
+    train_df = df.slice(valid_size + test_size)
+    valid_df = df.slice(0, valid_size)
+    test_df = df.slice(valid_size, test_size)
+
+    return train_df, valid_df, test_df
