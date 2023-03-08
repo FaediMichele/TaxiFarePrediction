@@ -76,7 +76,7 @@ def get_image_boroughs(boros: dict, points_area, out_shape=(2000,2000), dtype=np
     west, east, south, north = points_area
 
     geometries = [b['total_geometry'] for b in boros.values()]
-    names = [b['name'] for b in boros.values()]
+    names = [b['name'].replace(" ", "_") for b in boros.values()]
     colors = {(k+1): name for k, name in enumerate(names)}
     colors[0] = 'None'
 
