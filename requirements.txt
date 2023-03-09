@@ -3,7 +3,7 @@ osmnx
 matplotlib
 polars
 scipy
-sklearn
+scikit-learn
 pyarrow
 requests
 seaborn

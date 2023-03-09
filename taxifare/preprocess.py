@@ -24,6 +24,7 @@ class PreprocessingFlags(enum.IntFlag):
     PASSENGER_COUNT_OUTLIERS = enum.auto()
     OCEAN_OUTLIERS = enum.auto()
     BOROUGH_OUTLIERS = enum.auto()
+    OCEAN_FEATURES = enum.auto()
 
 
 class Namespace:
@@ -84,6 +85,22 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
             ).get_columns()[0].alias('ocean_dropoff')
 
         df = df.filter(~ocean_pickup & ~ocean_dropoff)
+    
+    if PreprocessingFlags.OCEAN_FEATURES in namespace.preprocessing_flags:
+        x = df['pickup_longitude'].append(df['dropoff_longitude'])
+        y = df['pickup_latitude'].append(df['dropoff_latitude'])
+        points_area = data.get_square_area(x, y)
+
+        df = df.with_columns(
+            pl.struct(['pickup_longitude', 'pickup_latitude',
+                       'dropoff_longitude', 'dropoff_latitude'])
+            .map(data.polars_point_on_ocean(points_area, pickup=True))
+            .alias('ocean_pickup'))
+        df = df.with_columns(
+            pl.struct(['pickup_longitude', 'pickup_latitude',
+                       'dropoff_longitude', 'dropoff_latitude'])
+            .map(data.polars_point_on_ocean(points_area, dropoff=True))
+            .alias('ocean_dropoff'))
 
     # Boroughs
     if PreprocessingFlags.BOROUGH_OUTLIERS in namespace.preprocessing_flags:
@@ -108,7 +125,7 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
                     & (pl.col('dropoff_borough') != 'None'))
         )
 
-        df = pl.get_dummies(df, columns=('pickup_borough', 'dropoff_borough'))
+        df = df.get_dummies(columns=('pickup_borough', 'dropoff_borough'))
 
     return df
 
