@@ -25,10 +25,14 @@ class PreprocessingFlags(enum.IntFlag):
     OCEAN_OUTLIERS = enum.auto()
     BOROUGH_OUTLIERS = enum.auto()
     OCEAN_FEATURES = enum.auto()
+    BOROUGH_FEATURES = enum.auto()
 
 
 OCEAN_FLAGS = (PreprocessingFlags.OCEAN_FEATURES
                | PreprocessingFlags.OCEAN_OUTLIERS)
+
+BOROUGH_FLAGS = (PreprocessingFlags.BOROUGH_FEATURES
+                 | PreprocessingFlags.BOROUGH_OUTLIERS)
 
 
 class Namespace:
@@ -94,6 +98,8 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
         if PreprocessingFlags.OCEAN_OUTLIERS in namespace.preprocessing_flags:
             df = df.filter(~ocean_pickup & ~ocean_dropoff)
 
+    # Compute borough features if necessary, then apply them as requested
+    if BOROUGH_FLAGS & namespace.preprocessing_flags:
         x = df['pickup_longitude'].append(df['dropoff_longitude'])
         y = df['pickup_latitude'].append(df['dropoff_latitude'])
         points_area = data.get_square_area(x, y)
@@ -101,21 +107,36 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
         boros = boroughs.load()
         boros_image, boros_colors = boroughs.get_image_boroughs(boros,
                                                                 points_area)
-        df = (
-            df.with_columns(
+
+        pickup_borough = (
+            df.select(
                 pickup_borough=pl.struct(['pickup_longitude',
                                           'pickup_latitude'])
                 .map(boroughs.point_boroughs(boros_image, boros_colors,
-                                             points_area, "pickup_")),
+                                             points_area, "pickup_"))
+            ).get_columns()[0]
+        )
+
+        dropoff_borough = (
+            df.select(
                 dropoff_borough=pl.struct(['dropoff_longitude',
                                            'dropoff_latitude'])
                 .map(boroughs.point_boroughs(boros_image, boros_colors,
-                                             points_area, "dropoff_")))
-            .filter((pl.col('pickup_borough') != 'None')
-                    & (pl.col('dropoff_borough') != 'None'))
+                                             points_area, "dropoff_"))
+            ).get_columns()[0]
         )
 
-        df = df.get_dummies(columns=('pickup_borough', 'dropoff_borough'))
+        if (PreprocessingFlags.BOROUGH_FEATURES
+                in namespace.preprocessing_flags):
+            breakpoint()
+            df = df.with_columns(pickup_borough, dropoff_borough)
+
+        if (PreprocessingFlags.BOROUGH_OUTLIERS
+                in namespace.preprocessing_flags):
+            df = df.filter((pickup_borough != 'None')
+                           & (dropoff_borough != 'None'))
+
+        # df = df.get_dummies(columns=('pickup_borough', 'dropoff_borough'))
 
     return df
 
