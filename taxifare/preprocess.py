@@ -27,6 +27,10 @@ class PreprocessingFlags(enum.IntFlag):
     OCEAN_FEATURES = enum.auto()
 
 
+OCEAN_FLAGS = (PreprocessingFlags.OCEAN_FEATURES
+               | PreprocessingFlags.OCEAN_OUTLIERS)
+
+
 class Namespace:
     """Custom namespace for CLI parameters."""
     input_path: str
@@ -67,8 +71,8 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
             in namespace.preprocessing_flags):
         df = df.filter(pl.col('passenger_count') <= 6)
 
-    # Ocean outliers
-    if PreprocessingFlags.OCEAN_OUTLIERS in namespace.preprocessing_flags:
+    # Compute ocean features if necessary, then apply them as requested
+    if OCEAN_FLAGS & namespace.preprocessing_flags:
         x = df['pickup_longitude'].append(df['dropoff_longitude'])
         y = df['pickup_latitude'].append(df['dropoff_latitude'])
         points_area = data.get_square_area(x, y)
@@ -84,26 +88,12 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
             .map(data.polars_point_on_ocean(points_area, dropoff=True))
             ).get_columns()[0].alias('ocean_dropoff')
 
-        df = df.filter(~ocean_pickup & ~ocean_dropoff)
-    
-    if PreprocessingFlags.OCEAN_FEATURES in namespace.preprocessing_flags:
-        x = df['pickup_longitude'].append(df['dropoff_longitude'])
-        y = df['pickup_latitude'].append(df['dropoff_latitude'])
-        points_area = data.get_square_area(x, y)
+        if PreprocessingFlags.OCEAN_FEATURES in namespace.preprocessing_flags:
+            df = df.with_columns(ocean_pickup, ocean_dropoff)
 
-        df = df.with_columns(
-            pl.struct(['pickup_longitude', 'pickup_latitude',
-                       'dropoff_longitude', 'dropoff_latitude'])
-            .map(data.polars_point_on_ocean(points_area, pickup=True))
-            .alias('ocean_pickup'))
-        df = df.with_columns(
-            pl.struct(['pickup_longitude', 'pickup_latitude',
-                       'dropoff_longitude', 'dropoff_latitude'])
-            .map(data.polars_point_on_ocean(points_area, dropoff=True))
-            .alias('ocean_dropoff'))
+        if PreprocessingFlags.OCEAN_OUTLIERS in namespace.preprocessing_flags:
+            df = df.filter(~ocean_pickup & ~ocean_dropoff)
 
-    # Boroughs
-    if PreprocessingFlags.BOROUGH_OUTLIERS in namespace.preprocessing_flags:
         x = df['pickup_longitude'].append(df['dropoff_longitude'])
         y = df['pickup_latitude'].append(df['dropoff_latitude'])
         points_area = data.get_square_area(x, y)
