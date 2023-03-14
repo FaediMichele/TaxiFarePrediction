@@ -26,6 +26,7 @@ class PreprocessingFlags(enum.IntFlag):
     BOROUGH_OUTLIERS = enum.auto()
     OCEAN_FEATURES = enum.auto()
     BOROUGH_FEATURES = enum.auto()
+    PASSENGER_COUNT_FEATURES = enum.auto()
 
 
 OCEAN_FLAGS = (PreprocessingFlags.OCEAN_FEATURES
@@ -33,6 +34,9 @@ OCEAN_FLAGS = (PreprocessingFlags.OCEAN_FEATURES
 
 BOROUGH_FLAGS = (PreprocessingFlags.BOROUGH_FEATURES
                  | PreprocessingFlags.BOROUGH_OUTLIERS)
+
+PASSENGER_COUNT_FLAGS = (PreprocessingFlags.PASSENGER_COUNT_FEATURES
+                         | PreprocessingFlags.PASSENGER_COUNT_OUTLIERS)
 
 
 class Namespace:
@@ -71,9 +75,17 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
         df = data.expand_time_features(df)
 
     # Passenger count
-    if (PreprocessingFlags.PASSENGER_COUNT_OUTLIERS
-            in namespace.preprocessing_flags):
-        df = df.filter(pl.col('passenger_count') <= 6)
+    if PASSENGER_COUNT_FLAGS & namespace.preprocessing_flags:
+        passenger_outliers = df.select(
+            passenger_outlier=pl.col('passenger_count') > 6).get_columns()[0]
+
+        if (PreprocessingFlags.PASSENGER_COUNT_FEATURES
+                in namespace.preprocessing_flags):
+            df = df.with_columns(passenger_outliers)
+
+        if (PreprocessingFlags.PASSENGER_COUNT_OUTLIERS
+                in namespace.preprocessing_flags):
+            df = df.filter(~passenger_outliers)
 
     # Compute ocean features if necessary, then apply them as requested
     if OCEAN_FLAGS & namespace.preprocessing_flags:
