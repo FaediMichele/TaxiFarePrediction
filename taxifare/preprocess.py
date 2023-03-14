@@ -38,6 +38,11 @@ BOROUGH_FLAGS = (PreprocessingFlags.BOROUGH_FEATURES
 PASSENGER_COUNT_FLAGS = (PreprocessingFlags.PASSENGER_COUNT_FEATURES
                          | PreprocessingFlags.PASSENGER_COUNT_OUTLIERS)
 
+FOR_AUTOENCODER_FLAGS = (PreprocessingFlags.TIME_FEATURES
+                         | PreprocessingFlags.PASSENGER_COUNT_FEATURES
+                         | PreprocessingFlags.BOROUGH_FEATURES
+                         | PreprocessingFlags.OCEAN_FEATURES)
+
 
 class Namespace:
     """Custom namespace for CLI parameters."""
@@ -167,6 +172,8 @@ if __name__ == '__main__':
                         action=AddFlagEnumAction,
                         choices=PreprocessingFlags.__members__.keys())
     parser.add_argument('-n', '--num-samples', type=int, dest='samples')
+    parser.add_argument('--for-autoencoder', dest='preprocessing_flags',
+                        action='store_const', const=FOR_AUTOENCODER_FLAGS)
 
     args = parser.parse_args(namespace=Namespace())
     dump_preprocess(args)
