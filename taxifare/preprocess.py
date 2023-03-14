@@ -140,7 +140,6 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
 
         if (PreprocessingFlags.BOROUGH_FEATURES
                 in namespace.preprocessing_flags):
-            breakpoint()
             df = df.with_columns(pickup_borough, dropoff_borough)
 
         if (PreprocessingFlags.BOROUGH_OUTLIERS
