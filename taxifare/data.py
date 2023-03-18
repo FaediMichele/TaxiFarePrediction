@@ -25,7 +25,7 @@ def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
         (pl.col("pickup_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
         (pl.col("dropoff_longitude").is_between(*NEW_YORK_AREA[1], closed='both')) &
         (pl.col("dropoff_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
-        # (pl.col("fare_amount") > 0) &
+        (pl.col("fare_amount") > 0) &
         (pl.col("passenger_count") > 0)).with_columns([
             pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
         ).drop('key')
@@ -248,3 +248,36 @@ def split(df: pl.DataFrame, valid, test, seed=1,
     test_df = df.slice(valid_size, test_size)
 
     return train_df, valid_df, test_df
+
+
+def standardize(mean: pl.DataFrame, std: pl.DataFrame):
+    """Standardize (zero mean, unit variance) polars columns.
+
+    Usage::
+
+        df = df.with_columns(**standardize(mean, std))
+
+    ``mean`` and ``std`` with the following requisites:
+
+    - Only one row
+    - The columns must be a subset of the ones of ``df`` (i.e. the
+        dataframe on which the expression in being applied)
+
+    The values of the ``mean`` dataframe will be subtracted to the
+    corresponding columns in the dataframe, while the values of the
+    ``std`` will be used as divisor.
+    """
+    assert mean.columns == std.columns
+    return {column: (pl.col(column) - mean[column]) / std[column]
+            for column in mean.columns}
+
+
+def normalize(min_: pl.DataFrame, max_: pl.DataFrame):
+    """Normalize polars columns between ``min_`` and ``max_``.
+
+    Same as :func:`standardize` but for minmax scaling.
+    """
+    assert min_.columns == max_.columns
+    return {column: (pl.col(column) - min_[column])
+                    / (max_[column] - min_[column])             # NOQA
+            for column in min_.columns}
