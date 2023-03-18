@@ -4,25 +4,32 @@ import polars as pl
 import numpy as np
 from tqdm import tqdm
 from rasterio import features, transform
+DEFAULT_DATA = 'datasets/sde-columbia-nycp_2007_nynh-geojson.json'
 
-def load(file: str = 'datasets/sde-columbia-nycp_2007_nynh-geojson.json') -> dict:
+def load(file: str = DEFAULT_DATA) -> dict:
     with open(file) as f:
         raw_json = json.load(f)
 
     boros = {}
     for feature in raw_json['features']:
-
-        hood = {'name': feature['properties']['nhoodname'], 'geometry': sh.unary_union(sh.from_geojson(json.dumps(feature['geometry'])))}
-        if feature['properties']['boroname'] in boros:
-            boros[feature['properties']['boroname']]['hoods'].append(hood)
+        hood_name = feature['properties']['nhoodname'].replace(" ", "_")
+        boro_name = feature['properties']['boroname'].replace(" ", "_")
+        hood = {
+            'name': hood_name,
+            'geometry': sh.unary_union(sh.from_geojson(
+                        json.dumps(feature['geometry'])))
+        }
+        if boro_name in boros:
+            boros[boro_name]['hoods'].append(hood)
         else:
-            boros[feature['properties']['boroname']] = {
-                'name': feature['properties']['boroname'],
+            boros[boro_name] = {
+                'name': boro_name,
                 'hoods' : [hood]
                 }
 
     for b in boros.values():
-        b['total_geometry'] = sh.union_all([h['geometry'] for h in b['hoods']])
+        b['total_geometry'] = sh.union_all([h['geometry']
+                                            for h in b['hoods']])
     return boros
 
 
@@ -42,7 +49,8 @@ def point_boroughs(image, colors, points_area, prefix: str = ""):
         x_norm = image.shape[0] * (longitude - x_min) / (x_max - x_min)
         y_norm = image.shape[1] * (latitude - y_min) / (y_max - y_min)
         return pl.Series([
-            colors[get_color(image, x, y, image.shape)] for x, y in tqdm(zip(x_norm, y_norm), total=len(longitude))
+            colors[get_color(image, x, y, image.shape)]
+            for x, y in tqdm(zip(x_norm, y_norm), total=len(longitude))
         ])
 
     return return_function
@@ -54,7 +62,8 @@ def get_neighborhood_names(boros: dict) -> int:
     return l
 
 
-def get_image_neighborhood(boros: dict, points_area, out_shape=(2000,2000), dtype=np.float32):
+def get_image_neighborhood(boros: dict, points_area,
+                           out_shape=(2000,2000), dtype=np.float32):
     west, east, south, north = points_area
     geometries = []
     
@@ -67,21 +76,26 @@ def get_image_neighborhood(boros: dict, points_area, out_shape=(2000,2000), dtyp
 
     out = np.ndarray(out_shape, dtype=dtype)
     
-    features.rasterize(zip(geometries, colors), out=out, fill=0, transform=transform.from_bounds(west, south, east, north, *out.shape))
+    features.rasterize(zip(geometries, colors), out=out, fill=0,
+                       transform=transform.from_bounds(
+                            west, south, east, north, *out.shape))
 
     return out, colors
 
 
-def get_image_boroughs(boros: dict, points_area, out_shape=(2000,2000), dtype=np.float32):
+def get_image_boroughs(boros: dict, points_area, out_shape=(2000,2000),
+                       dtype=np.float32):
     west, east, south, north = points_area
 
     geometries = [b['total_geometry'] for b in boros.values()]
-    names = [b['name'].replace(" ", "_") for b in boros.values()]
+    names = [b['name'] for b in boros.values()]
     colors = {(k+1): name for k, name in enumerate(names)}
     colors[0] = 'None'
 
     out = np.ndarray(out_shape, dtype=dtype)
 
-    features.rasterize(zip(geometries, colors), out=out, fill=0, transform=transform.from_bounds(west, south, east, north, *out.shape))
+    features.rasterize(zip(geometries, colors), out=out, fill=0,
+                       transform=transform.from_bounds(
+                            west, south, east, north, *out.shape))
 
     return out, colors
