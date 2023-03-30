@@ -12,6 +12,8 @@ from sklearn.linear_model import LinearRegression
 import taxifare.basemap as basemap
 from tqdm import tqdm
 
+import osmnx as ox, networkx as nx, multiprocessing as mp
+
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
 TREND_DATETIME_GAP = pl.datetime(2012, 9, 1)
@@ -25,7 +27,6 @@ def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
         (pl.col("pickup_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
         (pl.col("dropoff_longitude").is_between(*NEW_YORK_AREA[1], closed='both')) &
         (pl.col("dropoff_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
-        (pl.col("fare_amount") > 0) &
         (pl.col("passenger_count") > 0)).with_columns([
             pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
         ).drop('key')
@@ -281,3 +282,20 @@ def normalize(min_: pl.DataFrame, max_: pl.DataFrame):
     return {column: (pl.col(column) - min_[column])
                     / (max_[column] - min_[column])             # NOQA
             for column in min_.columns}
+
+def calculate_travel_distance_batch(batch_data) -> list[float]:
+    weights = []
+    for lon1, lat1, lon2, lat2, G in batch_data:
+        start_node = ox.nearest_nodes(G, lon1, lat1)
+        end_node = ox.nearest_nodes(G, lon2, lat2)
+        path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
+        weights.append(nx.path_weight(G, path, weight='travel_time'))
+    return weights
+
+
+def calculate_travel_distance(data, G) -> list[float]:
+    lon1, lat1, lon2, lat2 = data
+    start_node = ox.nearest_nodes(G, lon1, lat1)
+    end_node = ox.nearest_nodes(G, lon2, lat2)
+    path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
+    return nx.path_weight(G, path, weight='travel_time')

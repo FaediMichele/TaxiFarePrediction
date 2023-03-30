@@ -1,6 +1,7 @@
 datasets/*
 cache/*
 map.png
+*.graphml
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
