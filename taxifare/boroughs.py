@@ -1,10 +1,16 @@
+from typing import Tuple
+
 import shapely as sh
 import json
 import polars as pl
 import numpy as np
 from tqdm import tqdm
 from rasterio import features, transform
+
+import taxifare.data as data
+
 DEFAULT_DATA = 'datasets/sde-columbia-nycp_2007_nynh-geojson.json'
+
 
 def load(file: str = DEFAULT_DATA) -> dict:
     with open(file) as f:
@@ -66,16 +72,16 @@ def get_image_neighborhood(boros: dict, points_area,
                            out_shape=(2000,2000), dtype=np.float32):
     west, east, south, north = points_area
     geometries = []
-    
+
     for b in boros.values():
         geometries.extend([h['geometry'] for h in b['hoods']])
-        
+
     names = get_neighborhood_names(boros)
     colors = {(k+1): name for k, name in enumerate(names)}
     colors[0] = 'None'
 
     out = np.ndarray(out_shape, dtype=dtype)
-    
+
     features.rasterize(zip(geometries, colors), out=out, fill=0,
                        transform=transform.from_bounds(
                             west, south, east, north, *out.shape))
@@ -99,3 +105,37 @@ def get_image_boroughs(boros: dict, points_area, out_shape=(2000,2000),
                             west, south, east, north, *out.shape))
 
     return out, colors
+
+
+def compute_boroughs(df: pl.DataFrame) -> Tuple[pl.Series, pl.Series]:
+    """Return pickup and dropoff boroughs for a given dataframe."""
+    # The algorithm is calibrated for the default NYC area defined in
+    # data. Use those point to normalize.
+    in_area = df.select(in_area=data.in_newyork_area_expr()).get_columns()[0]
+    x = df['pickup_longitude'].filter(in_area).append(
+        df['dropoff_longitude'].filter(in_area))
+    y = df['pickup_latitude'].filter(in_area).append(
+        df['dropoff_latitude'].filter(in_area))
+    points_area = data.get_square_area(x, y)
+
+    boros = load()
+    boros_image, boros_colors = get_image_boroughs(boros, points_area)
+
+    pickup_borough = (
+        df.select(
+            pickup_borough=pl.struct(['pickup_longitude', 'pickup_latitude'])
+            .map(point_boroughs(boros_image, boros_colors,
+                                points_area, "pickup_"))
+        ).get_columns()[0]
+    )
+
+    dropoff_borough = (
+        df.select(
+            dropoff_borough=pl.struct(['dropoff_longitude',
+                                       'dropoff_latitude'])
+            .map(point_boroughs(boros_image, boros_colors,
+                                points_area, "dropoff_"))
+        ).get_columns()[0]
+    )
+
+    return pickup_borough, dropoff_borough
