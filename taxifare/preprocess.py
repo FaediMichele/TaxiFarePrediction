@@ -7,9 +7,11 @@ import enum
 from typing import Optional
 
 import polars as pl
+import tensorflow as tf
 
 import taxifare.data as data
 import taxifare.boroughs as boroughs
+import taxifare.ae as ae
 
 DESCRIPTION = __doc__
 
@@ -27,6 +29,7 @@ class PreprocessingFlags(enum.IntFlag):
     OCEAN_FEATURES = enum.auto()
     BOROUGH_FEATURES = enum.auto()
     PASSENGER_COUNT_FEATURES = enum.auto()
+    REE_OUTLIERS = enum.auto()
 
 
 OCEAN_FLAGS = (PreprocessingFlags.OCEAN_FEATURES
@@ -43,6 +46,12 @@ FOR_AUTOENCODER_FLAGS = (PreprocessingFlags.TIME_FEATURES
                          | PreprocessingFlags.BOROUGH_FEATURES
                          | PreprocessingFlags.OCEAN_FEATURES)
 
+FOR_TRAIN_FLAGS = (PreprocessingFlags.TIME_FEATURES
+                   | PreprocessingFlags.OCEAN_OUTLIERS
+                   | PreprocessingFlags.BOROUGH_OUTLIERS
+                   | PreprocessingFlags.PASSENGER_COUNT_OUTLIERS)
+#                    | PreprocessingFlags.REE_OUTLIERS)
+
 
 class Namespace:
     """Custom namespace for CLI parameters."""
@@ -50,6 +59,8 @@ class Namespace:
     output_path: str
     preprocessing_flags: PreprocessingFlags = PreprocessingFlags.BASE
     samples: Optional[int] = None
+    ree_threshold: float = ae.OPTIMAL_THRESHOLD
+    ree_model: Optional[str] = None
 
 
 class AddFlagEnumAction(argparse.Action):
@@ -154,6 +165,17 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
 
         # df = df.get_dummies(columns=('pickup_borough', 'dropoff_borough'))
 
+    # Outlier detection through autoencoder
+    if PreprocessingFlags.REE_OUTLIERS in namespace.preprocessing_flags:
+        if namespace.ree_model is None:
+            raise ValueError('In order to detect reconstruction error '
+                             'outlier please specify a path to a trained model'
+                             ' (--ree-model via CLI).')
+
+        ae_model = tf.keras.models.load_model(namespace.ree_model)
+        ree = ae.compute_ree(df, ae_model, 2048)
+        df = df.filter(ree < namespace.ree_threshold)
+
     return df
 
 
@@ -174,6 +196,10 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--num-samples', type=int, dest='samples')
     parser.add_argument('--for-autoencoder', dest='preprocessing_flags',
                         action='store_const', const=FOR_AUTOENCODER_FLAGS)
+    parser.add_argument('--ree-model', dest='ree_model', type=str)
+    parser.add_argument('--ree-threshold', dest='ree_threshold', type=float)
+    parser.add_argument('--for-train', dest='preprocessing_flags',
+                        const=FOR_TRAIN_FLAGS, action='store_const')
 
     args = parser.parse_args(namespace=Namespace())
     dump_preprocess(args)
