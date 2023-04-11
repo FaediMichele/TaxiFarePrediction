@@ -21,15 +21,29 @@ TREND_DATETIME_GAP = pl.datetime(2012, 9, 1)
 IMAGE_API_URL = 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'
 
 
+def in_newyork_area_expr(area=NEW_YORK_AREA) -> pl.Expr:
+    """Return polars expr for points inside a considered area."""
+    return ((pl.col("pickup_longitude").is_between(*area[1], closed='both'))
+            & (pl.col("pickup_latitude").is_between(*area[0], closed='both'))
+            & (pl.col("dropoff_longitude").is_between(*area[1], closed='both'))
+            & (pl.col("dropoff_latitude").is_between(*area[0], closed='both')))
+
+
 def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
-    return pl.scan_csv(dataset_path).filter(
-        (pl.col("pickup_longitude").is_between(*NEW_YORK_AREA[1], closed='both')) &
-        (pl.col("pickup_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
-        (pl.col("dropoff_longitude").is_between(*NEW_YORK_AREA[1], closed='both')) &
-        (pl.col("dropoff_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
-        (pl.col("passenger_count") > 0)).with_columns([
-            pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
-        ).drop('key')
+    df = (
+        pl.scan_csv(dataset_path)
+          .filter(in_newyork_area_expr() & (pl.col("passenger_count") > 0))
+          .with_columns(
+            pl.col("pickup_datetime").str.strptime(
+                pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)
+        )
+        .drop('key')
+    )
+
+    if 'fare_amount' in df.columns:
+        df.filter(pl.col('fare_amount') > 0)
+
+    return df
 
 
 def normalize_points(x: pl.Series, y: pl.Series, points_area: tuple[float, float, float, float],
