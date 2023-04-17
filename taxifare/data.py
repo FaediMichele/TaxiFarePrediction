@@ -1,18 +1,18 @@
 import datetime
 import math
 from functools import lru_cache
-from typing import Callable, Tuple
-
+from typing import Callable, Tuple, Sequence
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
 import PIL.Image
 from sklearn.linear_model import LinearRegression
-
+from scipy.spatial import KDTree
 import taxifare.basemap as basemap
 from tqdm import tqdm
+import osmnx as ox
+import networkx as nx
 
-import osmnx as ox, networkx as nx, multiprocessing as mp
 
 DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
@@ -283,19 +283,36 @@ def normalize(min_: pl.DataFrame, max_: pl.DataFrame):
                     / (max_[column] - min_[column])             # NOQA
             for column in min_.columns}
 
-def calculate_travel_distance_batch(batch_data) -> list[float]:
-    weights = []
-    for lon1, lat1, lon2, lat2, G in batch_data:
-        start_node = ox.nearest_nodes(G, lon1, lat1)
-        end_node = ox.nearest_nodes(G, lon2, lat2)
-        path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
-        weights.append(nx.path_weight(G, path, weight='travel_time'))
-    return weights
-
-
-def calculate_travel_distance(data, G) -> list[float]:
+def calculate_travel_distance(data: tuple[float, float, float, float],
+                              G: nx.MultiDiGraph) -> list[float]:
     lon1, lat1, lon2, lat2 = data
     start_node = ox.nearest_nodes(G, lon1, lat1)
     end_node = ox.nearest_nodes(G, lon2, lat2)
     path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
     return nx.path_weight(G, path, weight='travel_time')
+
+
+def calculate_travel_distance_astar(data: tuple[float, float, float, float],
+                                    G: nx.MultiDiGraph) -> list[float]:
+    lon1, lat1, lon2, lat2 = data
+    def dist(a, b):
+        (x1, y1) = G.nodes[a]['x'], G.nodes[a]['y']
+        (x2, y2) = G.nodes[b]['x'], G.nodes[b]['y']
+        return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+
+    start_node = ox.nearest_nodes(G, lon1, lat1)
+    end_node = ox.nearest_nodes(G, lon2, lat2)
+    path = nx.astar_path(G, start_node, end_node, heuristic=dist, weight='travel_time')
+    return nx.path_weight(G, path, weight='travel_time')
+
+def calculate_travel_distance_with_matrix(data: tuple[float, float, float, float],
+                                          G: nx.MultiDiGraph,
+                                          distance_matrix: np.ndarray,
+                                          kdtree: KDTree=None) -> list[float]:
+    lon1, lat1, lon2, lat2 = data
+    if kdtree is None:
+        start_node = ox.nearest_nodes(G, lon1, lat1)
+        end_node = ox.nearest_nodes(G, lon2, lat2)
+    else:
+        start_node, end_node = kdtree.query([[lon1, lat1], [lon2, lat2]])
+    return distance_matrix[start_node, end_node]
