@@ -36,9 +36,6 @@ def iterate_df(dataframe: pl.DataFrame, input_columns=INPUT_COLUMNS,
 
     Return a pair (inputs, targets)
     """
-    input_indeces = tuple(map(dataframe.columns.index, input_columns))
-    target_indeces = tuple(map(dataframe.columns.index, target_columns))
-
     train_mean = pl.read_csv(os.path.join(MODEL_PATH, TRAIN_MEAN_SUBPATH))
     train_std = pl.read_csv(os.path.join(MODEL_PATH, TRAIN_STD_SUBPATH))
     train_max = pl.read_csv(os.path.join(MODEL_PATH, TRAIN_MAX_SUBPATH))
@@ -50,9 +47,8 @@ def iterate_df(dataframe: pl.DataFrame, input_columns=INPUT_COLUMNS,
             batch = batch.with_columns(**standardize(train_mean, train_std),
                                        **normalize(train_min, train_max))
 
-            batch_array = batch.to_numpy()
-            yield (batch_array.take(input_indeces, axis=1),
-                   batch_array.take(target_indeces, axis=1))
+            yield (batch.select(input_columns).to_numpy(),
+                   batch.select(target_columns).to_numpy())
 
         if not cycle:
             break

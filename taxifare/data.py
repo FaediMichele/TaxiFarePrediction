@@ -21,15 +21,29 @@ TREND_DATETIME_GAP = pl.datetime(2012, 9, 1)
 IMAGE_API_URL = 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'
 
 
+def in_newyork_area_expr(area=NEW_YORK_AREA) -> pl.Expr:
+    """Return polars expr for points inside a considered area."""
+    return ((pl.col("pickup_longitude").is_between(*area[1], closed='both'))
+            & (pl.col("pickup_latitude").is_between(*area[0], closed='both'))
+            & (pl.col("dropoff_longitude").is_between(*area[1], closed='both'))
+            & (pl.col("dropoff_latitude").is_between(*area[0], closed='both')))
+
+
 def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
-    return pl.scan_csv(dataset_path).filter(
-        (pl.col("pickup_longitude").is_between(*NEW_YORK_AREA[1], closed='both')) &
-        (pl.col("pickup_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
-        (pl.col("dropoff_longitude").is_between(*NEW_YORK_AREA[1], closed='both')) &
-        (pl.col("dropoff_latitude").is_between(*NEW_YORK_AREA[0], closed='both')) &
-        (pl.col("passenger_count") > 0)).with_columns([
-            pl.col("pickup_datetime").str.strptime(pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)]
-        ).drop('key')
+    df = (
+        pl.scan_csv(dataset_path)
+          .filter(in_newyork_area_expr() & (pl.col("passenger_count") > 0))
+          .with_columns(
+            pl.col("pickup_datetime").str.strptime(
+                pl.Datetime, fmt="%Y-%m-%d %H:%M:%S UTC", strict=True)
+        )
+        .drop('key')
+    )
+
+    if 'fare_amount' in df.columns:
+        df.filter(pl.col('fare_amount') > 0)
+
+    return df
 
 
 def normalize_points(x: pl.Series, y: pl.Series, points_area: tuple[float, float, float, float],
@@ -284,35 +298,61 @@ def normalize(min_: pl.DataFrame, max_: pl.DataFrame):
             for column in min_.columns}
 
 def calculate_travel_distance(data: tuple[float, float, float, float],
-                              G: nx.MultiDiGraph) -> list[float]:
-    lon1, lat1, lon2, lat2 = data
-    start_node = ox.nearest_nodes(G, lon1, lat1)
-    end_node = ox.nearest_nodes(G, lon2, lat2)
-    path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
-    return nx.path_weight(G, path, weight='travel_time')
-
-
-def calculate_travel_distance_astar(data: tuple[float, float, float, float],
-                                    G: nx.MultiDiGraph) -> list[float]:
-    lon1, lat1, lon2, lat2 = data
-    def dist(a, b):
-        (x1, y1) = G.nodes[a]['x'], G.nodes[a]['y']
-        (x2, y2) = G.nodes[b]['x'], G.nodes[b]['y']
-        return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
-
-    start_node = ox.nearest_nodes(G, lon1, lat1)
-    end_node = ox.nearest_nodes(G, lon2, lat2)
-    path = nx.astar_path(G, start_node, end_node, heuristic=dist, weight='travel_time')
-    return nx.path_weight(G, path, weight='travel_time')
-
-def calculate_travel_distance_with_matrix(data: tuple[float, float, float, float],
-                                          G: nx.MultiDiGraph,
-                                          distance_matrix: np.ndarray,
-                                          kdtree: KDTree=None) -> list[float]:
+                              G: nx.MultiDiGraph,
+                              kdtree: KDTree=None) -> float:
+    '''Calculate travel time between two coordinate.
+    
+    NB. Slow version - See `fast_travel_distance` for a fast implementation
+    '''
     lon1, lat1, lon2, lat2 = data
     if kdtree is None:
         start_node = ox.nearest_nodes(G, lon1, lat1)
         end_node = ox.nearest_nodes(G, lon2, lat2)
     else:
         start_node, end_node = kdtree.query([[lon1, lat1], [lon2, lat2]])
+    path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
+    return nx.path_weight(G, path, weight='travel_time')
+
+def calculate_travel_distance_with_matrix(data: tuple[float, float, float, float],
+                                          G: nx.MultiDiGraph,
+                                          distance_matrix: np.ndarray,
+                                          kdtree: KDTree=None) -> float:
+    '''Calculate travel time between two coordinate.
+    If a KDTree is provided the nearest nodes are calculated using it.
+    
+    NB. Slow version - See `fast_travel_distance` for a fast implementation
+    '''
+    lon1, lat1, lon2, lat2 = data
+    if kdtree is None:
+        start_node = ox.nearest_nodes(G, lon1, lat1)
+        end_node = ox.nearest_nodes(G, lon2, lat2)
+    else:
+        start_node, end_node = kdtree.query([[lon1, lat1], [lon2, lat2]])[1]
     return distance_matrix[start_node, end_node]
+
+def fast_travel_distance(data: list[tuple[float, float, float, float]],
+                         distance_matrix: np.ndarray,
+                         *,
+                         G: nx.MultiDiGraph=None,
+                         kdtree: KDTree=None) -> list[float]:
+    '''Calculate travel time from a list of coordinates pair
+        [(lon1,lat1,lon2,lat2)].
+    
+    If a KDTree is provided use it to calculate the nearest nodes, otherwise 
+    it creates it using the graph
+    
+    '''
+    assert G is not None or kdtree is not None
+    if kdtree is None:
+        points = np.zeros((len(G.nodes), 2))
+        for k, node in enumerate(G.nodes):
+            points[k, 0] = G.nodes[node]['x']
+            points[k, 1] = G.nodes[node]['y']
+        kdtree = KDTree(points)
+    lon1, lat1, lon2, lat2 = list(zip(*data))
+
+    distances = []
+    for start_node, end_node in zip(kdtree.query(list(zip(lon1, lat1)))[1],
+                                    kdtree.query(list(zip(lon2, lat2)))[1]):
+        distances.append(distance_matrix[start_node, end_node])
+    return distances
