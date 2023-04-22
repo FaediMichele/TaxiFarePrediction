@@ -4,10 +4,14 @@ Entrypoint, run with ``python -m texifare.preprocess [...]``
 """
 import argparse
 import enum
+import pickle
+import warnings
+from functools import partial
 from typing import Optional
 
 import polars as pl
 import tensorflow as tf
+import osmnx as ox
 
 import taxifare.data as data
 import taxifare.boroughs as boroughs
@@ -30,6 +34,7 @@ class PreprocessingFlags(enum.IntFlag):
     BOROUGH_FEATURES = enum.auto()
     PASSENGER_COUNT_FEATURES = enum.auto()
     REE_OUTLIERS = enum.auto()
+    GRAPH_TRAVEL_TIME = enum.auto()
 
 
 OCEAN_FLAGS = (PreprocessingFlags.OCEAN_FEATURES
@@ -61,6 +66,8 @@ class Namespace:
     samples: Optional[int] = None
     ree_threshold: float = ae.OPTIMAL_THRESHOLD
     ree_model: Optional[str] = None
+    city_graph: Optional[str] = None
+    city_distance_matrix: Optional[str] = None
 
 
 class AddFlagEnumAction(argparse.Action):
@@ -85,6 +92,35 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
         df = df.collect()
     else:
         df = df.fetch(namespace.samples)
+
+    # Travel time according to NYC graph
+    # This requires a lot of working memory, which will be freed after
+    # the process is over. Hence, this is done before expanding other
+    # features to minimize the total memory footprint.
+    if PreprocessingFlags.GRAPH_TRAVEL_TIME in namespace.preprocessing_flags:
+        if (namespace.city_graph is None
+                or namespace.city_distance_matrix is None):
+            raise ValueError('Please provide both a city graph (--city-graph) '
+                             'and a distance matrix (--city-distance-matrix)')
+
+        with open(namespace.city_distance_matrix, 'rb') as f:
+            warnings.warn('Distance matrix is a pickled file: use only '
+                          'from trusted sources')
+            distance_matrix = pickle.load(f)
+
+        G = ox.load_graphml(namespace.city_graph)
+        kdtree = data.kdtree_from_graph(G)
+        del G               # Save ~1GB of memory for the next computation
+
+        df = df.with_columns(
+            travel_time=pl.struct('pickup_longitude', 'pickup_latitude',
+                                  'dropoff_longitude', 'dropoff_latitude')
+            .map(partial(data.fast_travel_distance,
+                         distance_matrix=distance_matrix,
+                         kdtree=kdtree)))
+
+        del kdtree
+        del distance_matrix
 
     # Time features
     if PreprocessingFlags.TIME_FEATURES in namespace.preprocessing_flags:
@@ -200,6 +236,9 @@ if __name__ == '__main__':
     parser.add_argument('--ree-threshold', dest='ree_threshold', type=float)
     parser.add_argument('--for-train', dest='preprocessing_flags',
                         const=FOR_TRAIN_FLAGS, action='store_const')
+    parser.add_argument('--city-graph', dest='city_graph', type=str)
+    parser.add_argument('--city-distance-matrix', dest='city_distance_matrix',
+                        type=str)
 
     args = parser.parse_args(namespace=Namespace())
     dump_preprocess(args)

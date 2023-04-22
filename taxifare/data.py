@@ -301,7 +301,7 @@ def calculate_travel_distance(data: tuple[float, float, float, float],
                               G: nx.MultiDiGraph,
                               kdtree: KDTree=None) -> float:
     '''Calculate travel time between two coordinate.
-    
+
     NB. Slow version - See `fast_travel_distance` for a fast implementation
     '''
     lon1, lat1, lon2, lat2 = data
@@ -313,13 +313,15 @@ def calculate_travel_distance(data: tuple[float, float, float, float],
     path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
     return nx.path_weight(G, path, weight='travel_time')
 
-def calculate_travel_distance_with_matrix(data: tuple[float, float, float, float],
-                                          G: nx.MultiDiGraph,
-                                          distance_matrix: np.ndarray,
-                                          kdtree: KDTree=None) -> float:
+
+def calculate_travel_distance_with_matrix(
+        data: tuple[float, float, float, float],
+        G: nx.MultiDiGraph,
+        distance_matrix: np.ndarray,
+        kdtree: KDTree = None) -> float:
     '''Calculate travel time between two coordinate.
     If a KDTree is provided the nearest nodes are calculated using it.
-    
+
     NB. Slow version - See `fast_travel_distance` for a fast implementation
     '''
     lon1, lat1, lon2, lat2 = data
@@ -330,29 +332,62 @@ def calculate_travel_distance_with_matrix(data: tuple[float, float, float, float
         start_node, end_node = kdtree.query([[lon1, lat1], [lon2, lat2]])[1]
     return distance_matrix[start_node, end_node]
 
-def fast_travel_distance(data: list[tuple[float, float, float, float]],
+
+def kdtree_from_graph(G: nx.MultiDiGraph) -> KDTree:
+    """Compute a KDTree from a spatial graph."""
+    points = np.zeros((len(G.nodes), 2))
+    for k, node in enumerate(G.nodes):
+        points[k, 0] = G.nodes[node]['x']
+        points[k, 1] = G.nodes[node]['y']
+    return KDTree(points)
+
+
+def nearest_nodes(latitude: pl.Series, longitude: pl.Series,
+                  kdtree: KDTree) -> np.ndarray:
+    """Return array of nearest node indeces from a kdtree given coordinates."""
+    points = np.zeros((len(latitude), 2))
+    points[:, 0] = latitude.to_numpy()
+    points[:, 1] = longitude.to_numpy()
+
+    return kdtree.query(points)[1]
+
+
+def fast_travel_distance(data: pl.Series,
                          distance_matrix: np.ndarray,
                          *,
-                         G: nx.MultiDiGraph=None,
-                         kdtree: KDTree=None) -> list[float]:
+                         G: nx.MultiDiGraph = None,
+                         kdtree: KDTree = None) -> list[float]:
     '''Calculate travel time from a list of coordinates pair
         [(lon1,lat1,lon2,lat2)].
-    
-    If a KDTree is provided use it to calculate the nearest nodes, otherwise 
+
+    If a KDTree is provided use it to calculate the nearest nodes, otherwise
     it creates it using the graph
-    
+
     '''
     assert G is not None or kdtree is not None
     if kdtree is None:
-        points = np.zeros((len(G.nodes), 2))
-        for k, node in enumerate(G.nodes):
-            points[k, 0] = G.nodes[node]['x']
-            points[k, 1] = G.nodes[node]['y']
-        kdtree = KDTree(points)
-    lon1, lat1, lon2, lat2 = list(zip(*data))
+        kdtree = kdtree_from_graph(G)
+
+    lon1 = data.struct.field('pickup_longitude')
+    lat1 = data.struct.field('pickup_latitude')
+    lon2 = data.struct.field('dropoff_longitude')
+    lat2 = data.struct.field('dropoff_latitude')
+
+    start_nodes = nearest_nodes(lat1, lon1, kdtree)
+    end_nodes = nearest_nodes(lat2, lon2, kdtree)
 
     distances = []
-    for start_node, end_node in zip(kdtree.query(list(zip(lon1, lat1)))[1],
-                                    kdtree.query(list(zip(lon2, lat2)))[1]):
-        distances.append(distance_matrix[start_node, end_node])
-    return distances
+    for start_node, end_node in tqdm(zip(start_nodes, end_nodes),
+                                     total=len(data)):
+        distances.append(float(distance_matrix[start_node, end_node]))
+    return pl.Series(distances)
+
+
+def euclidian_distance(df: pl.DataFrame, name='travel_distance') -> pl.Series:
+    """Return a series containing the travel (euclidian) distances."""
+    return df.select(
+        np.sqrt(
+            (pl.col('pickup_latitude') - pl.col('dropoff_latitude')) ** 2
+            + (pl.col('pickup_longitude') - pl.col('dropoff_longitude')) ** 2)
+          .alias(name)
+        )[name]
