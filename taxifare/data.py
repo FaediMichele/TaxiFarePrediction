@@ -346,8 +346,8 @@ def nearest_nodes(latitude: pl.Series, longitude: pl.Series,
                   kdtree: KDTree) -> np.ndarray:
     """Return array of nearest node indeces from a kdtree given coordinates."""
     points = np.zeros((len(latitude), 2))
-    points[:, 0] = latitude.to_numpy()
-    points[:, 1] = longitude.to_numpy()
+    points[:, 0] = longitude.to_numpy()
+    points[:, 1] = latitude.to_numpy()
 
     return kdtree.query(points)[1]
 
