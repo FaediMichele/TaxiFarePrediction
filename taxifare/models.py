@@ -3,6 +3,7 @@ from typing import Iterable, Optional, Set, Union
 from itertools import chain
 
 import polars as pl
+from tensorflow import keras
 
 from taxifare import data
 
@@ -143,3 +144,45 @@ def iterate_df(dataframe: pl.DataFrame, batch_size=128, cycle=True,
 
         if not cycle:
             break
+
+
+MLP_TO_STD = 'fare_amount',
+MLP_TO_NORM = ('pickup_longitude', 'pickup_latitude',
+               'dropoff_longitude', 'dropoff_latitude', 'passenger_count',
+               'year', 'month', 'weekday', 'hour')
+
+MLP_TO_INPUT = ('pickup_longitude', 'pickup_latitude',
+                'dropoff_longitude', 'dropoff_latitude',
+                'passenger_count', 'year', 'month', 'weekday', 'hour',
+                'after2012', 'weekend')
+MLP_TO_OUTPUT = 'fare_amount',
+
+MLP_DATA_POLICY = DataPolicy(MLP_TO_STD, MLP_TO_NORM, MLP_TO_INPUT,
+                             MLP_TO_OUTPUT)
+"""Empty data policy, can be used during training to fit and save it."""
+
+MLP_URBAN_TO_NORM = MLP_TO_NORM + ('travel_time',)
+MLP_URBAN_TO_INPUT = MLP_TO_INPUT + ('travel_time',)
+
+MLP_URBAN_DATA_POLICY = DataPolicy(MLP_TO_STD, MLP_URBAN_TO_NORM,
+                                   MLP_URBAN_TO_INPUT, MLP_TO_OUTPUT)
+"""Empty data policy, can be used during training to fit and save it."""
+
+
+def get_cone_mlp(input_nodes, output_nodes, first_layer_nodes,
+                 num_hidden_layers, activation='relu',
+                 name='MLP') -> keras.Model:
+    """Build a MLP with descending number of nodes.
+
+    Each layer halves the number of nodes.
+    """
+    layers = [keras.layers.InputLayer((input_nodes,))]
+
+    nodes = first_layer_nodes
+    for _ in range(num_hidden_layers):
+        layers.append(keras.layers.Dense(nodes, activation=activation))
+        nodes //= 2
+
+    layers.append(keras.layers.Dense(output_nodes, activation='linear'))
+
+    return keras.Sequential(layers, name)
