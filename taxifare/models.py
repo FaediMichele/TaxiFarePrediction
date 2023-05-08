@@ -1,3 +1,4 @@
+import json
 from typing import Iterable, Optional, Set, Union
 from itertools import chain
 
@@ -32,6 +33,40 @@ class DataPolicy:
         self.std_dataframe: Optional[pl.DataFrame] = None
         self.min_dataframe: Optional[pl.DataFrame] = None
         self.max_dataframe: Optional[pl.DataFrame] = None
+
+    @classmethod
+    def from_file(cls, filename: str) -> 'DataPolicy':
+        """Load a policy from file.
+
+        Previously saved with :func:`to_file`.
+        """
+        with open(filename) as file:
+            data_dict = json.load(file)
+
+        policy = cls(data_dict['to_std'], data_dict['to_norm'],
+                     data_dict['to_input'], data_dict['to_output'])
+        policy.mean_dataframe = pl.from_dict(data_dict['mean'])
+        policy.std_dataframe = pl.from_dict(data_dict['std'])
+        policy.min_dataframe = pl.from_dict(data_dict['min'])
+        policy.max_dataframe = pl.from_dict(data_dict['max'])
+
+        return policy
+
+    def to_file(self, filename: str):
+        """Save policy to file."""
+        data_dict = {
+            'mean': self.mean_dataframe.to_dict(False),
+            'std': self.std_dataframe.to_dict(False),
+            'min': self.min_dataframe.to_dict(False),
+            'max': self.max_dataframe.to_dict(False),
+            'to_std': self.to_std,
+            'to_norm': self.to_norm,
+            'to_input': self.to_input,
+            'to_output': self.to_output
+        }
+
+        with open(filename, 'w') as file:
+            json.dump(data_dict, file)
 
     def missing_columns(self, df: DataOrLazyFrame) -> Set[str]:
         """Return requested columns that were not found in ``df``.
