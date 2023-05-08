@@ -111,3 +111,35 @@ class DataPolicy:
                 **data.normalize(self.min_dataframe, self.max_dataframe))
 
         return lazyframe.collect()
+
+
+def iterate_df(dataframe: pl.DataFrame, batch_size=128, cycle=True,
+               data_policy: DataPolicy = None):
+    """Iterate by given batch size and divide inputs from targets.
+
+    Values are standardized/normalized according to the given data
+    policy. The policy must be fit before feeding it to this function.
+
+    Yield a pair (inputs, targets) that can be used to feed keras fit
+    function.
+    """
+    while True:
+        for batch_start in range(0, len(dataframe), batch_size):
+            batch = dataframe[batch_start : batch_start + batch_size]   # NOQA
+            if data_policy is not None:
+                batch = data_policy.transform(batch)
+
+            # By default input columns are all columns except the first,
+            # target column is just the first one
+            input_columns = dataframe.columns[1:]
+            target_columns = dataframe.columns[0],
+            # If a policy is provided, use that instead
+            if data_policy is not None:
+                input_columns = data_policy.to_input
+                target_columns = data_policy.to_output
+
+            yield (batch.select(input_columns).to_numpy(),
+                   batch.select(target_columns).to_numpy())
+
+        if not cycle:
+            break

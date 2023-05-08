@@ -6,6 +6,7 @@ import argparse
 import enum
 import pickle
 import warnings
+import os.path
 from functools import partial
 from typing import Optional
 
@@ -209,7 +210,8 @@ def preprocess(namespace: Namespace) -> pl.DataFrame:
                              ' (--ree-model via CLI).')
 
         ae_model = tf.keras.models.load_model(namespace.ree_model)
-        ree = ae.compute_ree(df, ae_model, 2048)
+        policy = ae.get_policy(os.path.join(ae_model, ae.DATA_POLICY_SUBPATH))
+        ree = ae.compute_ree(df, ae_model, 2048, policy)
         df = df.filter(ree < namespace.ree_threshold)
 
     return df
