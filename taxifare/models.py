@@ -1,5 +1,5 @@
 import json
-from typing import Iterable, Optional, Set, Union
+from typing import Iterable, Optional, Set, Union, Tuple
 from itertools import chain
 
 import polars as pl
@@ -112,6 +112,13 @@ class DataPolicy:
                 **data.normalize(self.min_dataframe, self.max_dataframe))
 
         return lazyframe.collect()
+
+    def split_transform(self, df: DataOrLazyFrame) -> Tuple[pl.DataFrame,
+                                                            pl.DataFrame]:
+        """Apply transformations and return splitted input, output."""
+        transformed = self.transform(df)
+        return (transformed.select(self.to_input),
+                transformed.select(self.to_output))
 
 
 def iterate_df(dataframe: pl.DataFrame, batch_size=128, cycle=True,
