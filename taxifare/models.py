@@ -193,3 +193,27 @@ def get_cone_mlp(input_nodes, output_nodes, first_layer_nodes,
     layers.append(keras.layers.Dense(output_nodes, activation='linear'))
 
     return keras.Sequential(layers, name)
+
+
+def build_evaluation_nn(regressor: keras.Model,
+                        data_policy: DataPolicy,
+                        target_column='fare_amount') -> keras.Model:
+    """Build an evaluation model suitable to be used for prediction.
+
+    In practice, attach a final layer to revert standardization for the
+    results predicted by the model.
+    """
+    if target_column in data_policy.to_std:
+        rescale_layer = keras.layers.Rescaling(
+            data_policy.std_dataframe[target_column],
+            data_policy.mean_dataframe[target_column],
+            trainable=False)
+    elif target_column in data_policy.to_norm:
+        min_ = data_policy.min_dataframe[target_column]
+        max_ = data_policy.max_dataframe[target_column]
+        rescale_layer = keras.layers.Rescaling(max_ - min_, min_,
+                                               trainable=False)
+
+    return keras.Sequential([keras.layers.Input(len(data_policy.to_input)),
+                             regressor,
+                             rescale_layer], name=f'{regressor.name}_eval')
