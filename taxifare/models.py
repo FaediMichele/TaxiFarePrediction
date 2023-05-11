@@ -3,6 +3,7 @@ from typing import Iterable, Optional, Set, Union, Tuple
 from itertools import chain
 
 import polars as pl
+import numpy as np
 from tensorflow import keras
 
 from taxifare import data
@@ -219,3 +220,8 @@ def build_evaluation_nn(regressor: keras.Model,
     return keras.Sequential([keras.layers.Input(len(data_policy.to_input)),
                              regressor,
                              rescale_layer], name=f'{regressor.name}_eval')
+
+
+def rmse(predictions: np.ndarray, targets: np.ndarray) -> float:
+    """Compute root mean squared error to emulate kaggle scores."""
+    return np.sqrt(((predictions - targets) ** 2).sum()).item()
