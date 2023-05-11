@@ -213,6 +213,8 @@ def build_evaluation_nn(regressor: keras.Model,
         max_ = data_policy.max_dataframe[target_column]
         rescale_layer = keras.layers.Rescaling(max_ - min_, min_,
                                                trainable=False)
+    else:
+        rescale_layer = keras.layers.Rescaling(1)
 
     return keras.Sequential([keras.layers.Input(len(data_policy.to_input)),
                              regressor,
