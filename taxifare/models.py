@@ -246,4 +246,4 @@ def build_evaluation_nn(regressor: keras.Model,
 
 def rmse(predictions: np.ndarray, targets: np.ndarray) -> float:
     """Compute root mean squared error to emulate kaggle scores."""
-    return np.sqrt(((predictions - targets) ** 2).sum()).item()
+    return np.sqrt(((predictions - targets) ** 2).mean()).item()
