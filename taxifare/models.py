@@ -94,23 +94,45 @@ class DataPolicy:
         self.max_dataframe = df.select(pl.col(self.to_norm).max()).collect()
         self.min_dataframe = df.select(pl.col(self.to_norm).min()).collect()
 
-    def transform(self, df: DataOrLazyFrame) -> pl.DataFrame:
+    def transform(self, df: DataOrLazyFrame, transform_input=True,
+                  transform_output=True) -> pl.DataFrame:
         """Apply stored transformations to the given dataframe."""
         missing_columns = self.missing_columns(df)
-        assert not missing_columns, ('Given dataframe does not provide the '
-                                     f'necessary columns {missing_columns}')
+        assert ((not transform_input
+                 or not missing_columns.intersection(self.to_input))
+                and
+                (not transform_output
+                 or not missing_columns.intersection(self.to_output))), \
+               ('Given dataframe does not provide the necessary columns '
+                f'{missing_columns}')
 
         lazyframe = df.lazy()
 
-        # Skip transformations if uninitialized
-        if self.mean_dataframe is not None and self.std_dataframe is not None:
-            lazyframe = lazyframe.with_columns(
-                **data.standardize(self.mean_dataframe, self.std_dataframe))
+        # Select which columns will be transformed
+        columns = []
+        if transform_input:
+            columns.extend(self.to_input)
+        if transform_output:
+            columns.extend(self.to_output)
+
+        # Quadratic complexity irrelevant for small number of
+        # columns. Pro: keeps order intact
+        std_columns = tuple(filter(columns.__contains__, self.to_std))
+        norm_columns = tuple(filter(columns.__contains__, self.to_norm))
 
         # Skip transformations if uninitialized
-        if self.min_dataframe is not None and self.max_dataframe is not None:
+        if (self.mean_dataframe is not None and self.std_dataframe is not None
+                and std_columns):
             lazyframe = lazyframe.with_columns(
-                **data.normalize(self.min_dataframe, self.max_dataframe))
+                **data.standardize(self.mean_dataframe.select(std_columns),
+                                   self.std_dataframe.select(std_columns)))
+
+        # Skip transformations if uninitialized
+        if (self.min_dataframe is not None and self.max_dataframe is not None
+                and norm_columns):
+            lazyframe = lazyframe.with_columns(
+                **data.normalize(self.min_dataframe[norm_columns],
+                                 self.max_dataframe[norm_columns]))
 
         return lazyframe.collect()
 
