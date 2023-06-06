@@ -79,7 +79,7 @@ def image(top, right, bottom, left, zoom=14, **tile_args):
     x0_tile, y0_tile = int(x0 / TILE_SIZE), int(y0 / TILE_SIZE)
     x1_tile, y1_tile = math.ceil(x1 / TILE_SIZE), math.ceil(y1 / TILE_SIZE)
 
-    
+
     img = load_or_download_image(x0_tile, y0_tile, x1_tile, y1_tile, zoom, tile_args)
 
 

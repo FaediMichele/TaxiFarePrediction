@@ -54,8 +54,9 @@ def point_boroughs(image, colors, points_area, prefix: str = ""):
 
         x_norm = image.shape[0] * (longitude - x_min) / (x_max - x_min)
         y_norm = image.shape[1] * (latitude - y_min) / (y_max - y_min)
+
         return pl.Series([
-            colors[get_color(image, x, y, image.shape)]
+            colors.get(get_color(image, x, y, image.shape), 'None')
             for x, y in tqdm(zip(x_norm, y_norm), total=len(longitude))
         ])
 
