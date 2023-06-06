@@ -6,8 +6,8 @@ import requests
 import math
 
 URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-RADIUS = 6371   # earth's average radius in km
-TILE_SIZE = 256 # each tile's size in pixels
+RADIUS = 6371       # earth's average radius in km
+TILE_SIZE = 256     # each tile's size in pixels
 
 CACHED_IMAGE = 'map.png'
 
@@ -30,14 +30,18 @@ def tile(session=None, **url_format_args):
     if not session:
         session = requests
 
-    with session.get(url.format(**url_format_args), headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36'}) as resp:
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36'}    # NOQA
+
+    with session.get(url.format(**url_format_args), headers=headers) as resp:
         resp.raise_for_status()
         return Image.open(BytesIO(resp.content))
 
 
-
-def load_or_download_image(x0_tile, y0_tile, x1_tile, y1_tile, zoom, tile_args):
-    data = {'x0_tile': str(x0_tile), 'y0_tile': str(y0_tile), 'x1_tile': str(x1_tile), 'y1_tile': str(y1_tile), 'zoom': str(zoom)}
+def load_or_download_image(x0_tile, y0_tile, x1_tile, y1_tile, zoom,
+                           tile_args):
+    data = {'x0_tile': str(x0_tile), 'y0_tile': str(y0_tile),
+            'x1_tile': str(x1_tile), 'y1_tile': str(y1_tile),
+            'zoom': str(zoom)}
     try:
         img = Image.open(CACHED_IMAGE)
         if img.text == data:
@@ -68,6 +72,7 @@ def load_or_download_image(x0_tile, y0_tile, x1_tile, y1_tile, zoom, tile_args):
     img.save(CACHED_IMAGE, pnginfo=metadata)
     return img
 
+
 def image(top, right, bottom, left, zoom=14, **tile_args):
     """return an osm map from the given bounding box points"""
 
@@ -79,14 +84,13 @@ def image(top, right, bottom, left, zoom=14, **tile_args):
     x0_tile, y0_tile = int(x0 / TILE_SIZE), int(y0 / TILE_SIZE)
     x1_tile, y1_tile = math.ceil(x1 / TILE_SIZE), math.ceil(y1 / TILE_SIZE)
 
-
-    img = load_or_download_image(x0_tile, y0_tile, x1_tile, y1_tile, zoom, tile_args)
-
+    img = load_or_download_image(x0_tile, y0_tile, x1_tile, y1_tile, zoom,
+                                 tile_args)
 
     # crop image to the given bounding box
     x, y = x0_tile * TILE_SIZE, y0_tile * TILE_SIZE
     return img.crop((
-        int(x0 - x),  # left
-        int(y0 - y),  # top
-        int(x1 - x),  # right
-        int(y1 - y))) # bottom
+        int(x0 - x),    # left
+        int(y0 - y),    # top
+        int(x1 - x),    # right
+        int(y1 - y)))   # bottom

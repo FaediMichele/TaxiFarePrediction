@@ -1,7 +1,8 @@
 import datetime
 import math
 from functools import lru_cache
-from typing import Callable, Tuple, Sequence
+from typing import Callable, Tuple
+
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
@@ -18,7 +19,7 @@ DATASET_PATH = 'datasets/train.csv'
 NEW_YORK_AREA = [(40.506797, 41.130785), (-74.268086, -73.031593)]
 TREND_DATETIME_GAP = pl.datetime(2012, 9, 1)
 
-IMAGE_API_URL = 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'
+IMAGE_API_URL = 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'        # NOQA
 
 
 def in_newyork_area_expr(area=NEW_YORK_AREA) -> pl.Expr:
@@ -46,8 +47,10 @@ def load_data(dataset_path=DATASET_PATH) -> pl.LazyFrame:
     return df
 
 
-def normalize_points(x: pl.Series, y: pl.Series, points_area: tuple[float, float, float, float],
-    image_size: tuple[float,float]) -> tuple[pl.Series, pl.Series]:
+def normalize_points(x: pl.Series, y: pl.Series,
+                     points_area: tuple[float, float, float, float],
+                     image_size: tuple[float, float]
+                     ) -> tuple[pl.Series, pl.Series]:
     """Return copies of x and y, normalized based on image size.
 
     Can be used to plot points on image.
@@ -69,23 +72,26 @@ def plot_distributions(dataframe: pl.DataFrame, num_cols=4):
         ax.hist(dataframe[column])
         ax.title.set_text(column)
 
-def regula_falsi(f: Callable[[float], float], a:float, b:float, tol:float) -> tuple[float,float]:
-    """Compute the zero of a function with the given tolerance and two initial points
+
+def regula_falsi(f: Callable[[float], float], a: float, b: float,
+                 tol: float) -> tuple[float, float]:
+    """Compute the zero of a function with given tolerance and initial points.
 
     return the zero position and it's approximated error.
     """
-    nMax = math.ceil(math.log(abs(b-a)/tol)/math.log(2))
+    nMax = math.ceil(math.log(abs(b - a) / tol) / math.log(2))
     fa = f(a)
     fb = f(b)
     x = a
     fx = fa
     n = 0
 
-    while abs(a-b) >= tol+1e-16*max(abs(a),abs(b)) and abs(fx) >= tol and n < nMax:
+    while (abs(a - b) >= tol + 1e-16 * max(abs(a), abs(b))
+           and abs(fx) >= tol and n < nMax):
         n += 1
-        x = a-fa*(b-a) / (fb-fa)
+        x = a - fa * (b - a) / (fb - fa)
         fx = f(x)
-        if (fx >= 0 and fa >= 0) or (fa <0 and fa < 0):
+        if (fx >= 0 and fa >= 0) or (fa < 0 and fa < 0):
             a = x
             fa = fx
         else:
@@ -94,16 +100,18 @@ def regula_falsi(f: Callable[[float], float], a:float, b:float, tol:float) -> tu
 
     return x, fx
 
-def find_latitude_correction(p: tuple[float, float], additional_space: float, b:float, tol=1e-4)-> tuple[float, float]:
-    """Calculate the new latitude above or below(sign of b) additional_space(in km)
 
+def find_latitude_correction(p: tuple[float, float], additional_space: float,
+                             b: float, tol=1e-4) -> tuple[float, float]:
+    """Calculate the new latitude above or below(sign of b) additional_space.
+
+    In km.
     return the new latitude and the approximated error.
     """
-    f = lambda x: distance(p, (p[0], x)) - additional_space
+    f = lambda x: distance(p, (p[0], x)) - additional_space         # NOQA
     a = p[1]
     b = a + b
     return regula_falsi(f, a, b, tol)
-
 
 
 def distance(p1: tuple[float, float], p2: tuple[float, float]) -> float:
@@ -111,8 +119,9 @@ def distance(p1: tuple[float, float], p2: tuple[float, float]) -> float:
     lon1, lat1 = math.radians(p1[0]), math.radians(p1[1])
     lon2, lat2 = math.radians(p2[0]), math.radians(p2[1])
 
-    a = math.sin((lat1-lat2)/2)**2 + math.cos(lat1)*math.cos(lat2)*(math.sin((lon1-lon2)/2)**2)
-    return math.atan2(math.sqrt(a), math.sqrt(1-a))*2*6371
+    a = math.sin((lat1 - lat2) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) \
+        * (math.sin((lon1-lon2)/2)**2)
+    return math.atan2(math.sqrt(a), math.sqrt(1-a)) * 2 * 6371
 
 
 def get_square_area(x: pl.Series, y: pl.Series
@@ -144,7 +153,7 @@ def new_york_map(points_area) -> PIL.Image.Image:
 
 
 def point_on_ocean(x: float, y: float, image: PIL.Image.Image,
-                    ocean_color=(212,218,220), color_sensitivity=5) -> bool:
+                   ocean_color=(212, 218, 220), color_sensitivity=5) -> bool:
     """Return whether a point is appears to be on the ocean."""
     try:
         pixel = image.getpixel((round(x), image.size[1] - round(y)))
@@ -164,19 +173,23 @@ def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
         image = new_york_map(points_area)
 
         if pickup:
-            pickup_x, pickup_y = normalize_points(coords.struct.field('pickup_longitude'),
-                                                coords.struct.field('pickup_latitude'),
-                                                points_area, image.size)
+            pickup_x, pickup_y = normalize_points(
+                coords.struct.field('pickup_longitude'),
+                coords.struct.field('pickup_latitude'),
+                points_area, image.size)
 
         if dropoff:
-            dropoff_x, dropoff_y = normalize_points(coords.struct.field('dropoff_longitude'),
-                                                    coords.struct.field('dropoff_latitude'),
-                                                    points_area, image.size)
+            dropoff_x, dropoff_y = normalize_points(
+                coords.struct.field('dropoff_longitude'),
+                coords.struct.field('dropoff_latitude'),
+                points_area, image.size)
 
         if pickup and dropoff:
             return pl.Series([
                 point_on_ocean(x, y, image) or point_on_ocean(d_x, d_y, image)
-                for x, y, d_x, d_y in tqdm(zip(pickup_x, pickup_y, dropoff_x, dropoff_y), total=len(pickup_x))
+                for x, y, d_x, d_y in tqdm(
+                    zip(pickup_x, pickup_y, dropoff_x, dropoff_y),
+                    total=len(pickup_x))
             ])
 
         if pickup:
@@ -187,7 +200,8 @@ def polars_point_on_ocean(points_area, pickup=False, dropoff=False):
         else:
             return pl.Series([
                 point_on_ocean(d_x, d_y, image)
-                for d_x, d_y in tqdm(zip(dropoff_x, dropoff_y), total=len(dropoff_x))
+                for d_x, d_y in tqdm(zip(dropoff_x, dropoff_y),
+                                     total=len(dropoff_x))
             ])
     return return_function
 
@@ -224,7 +238,8 @@ def detrend(data: pl.DataFrame,
     return data.select(
         [date_column,
          pl.col(trended_column)
-         - pl.col(date_column).apply(lambda d: predictions[months_from(min_date, d) - 1])])
+         - pl.col(date_column).apply(
+            lambda d: predictions[months_from(min_date, d) - 1])])
 
 
 def expand_time_features(data: pl.DataFrame,
@@ -297,9 +312,10 @@ def normalize(min_: pl.DataFrame, max_: pl.DataFrame):
                     / (max_[column] - min_[column])             # NOQA
             for column in min_.columns}
 
+
 def calculate_travel_distance(data: tuple[float, float, float, float],
                               G: nx.MultiDiGraph,
-                              kdtree: KDTree=None) -> float:
+                              kdtree: KDTree = None) -> float:
     '''Calculate travel time between two coordinate.
 
     NB. Slow version - See `fast_travel_distance` for a fast implementation

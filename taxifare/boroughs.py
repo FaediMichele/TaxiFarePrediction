@@ -30,7 +30,7 @@ def load(file: str = DEFAULT_DATA) -> dict:
         else:
             boros[boro_name] = {
                 'name': boro_name,
-                'hoods' : [hood]
+                'hoods': [hood]
                 }
 
     for b in boros.values():
@@ -42,8 +42,9 @@ def load(file: str = DEFAULT_DATA) -> dict:
 def get_color(image, x, y, shape):
     try:
         return image[shape[1] - round(y), round(x)]
-    except Exception as e:
+    except Exception:
         return 0
+
 
 def point_boroughs(image, colors, points_area, prefix: str = ""):
     def return_function(coords: pl.Series):
@@ -62,15 +63,16 @@ def point_boroughs(image, colors, points_area, prefix: str = ""):
 
     return return_function
 
+
 def get_neighborhood_names(boros: dict) -> int:
-    l = []
+    names = []
     for b in boros.values():
-        l.extend([h['name'] for h in b['hoods']])
-    return l
+        names.extend([h['name'] for h in b['hoods']])
+    return names
 
 
 def get_image_neighborhood(boros: dict, points_area,
-                           out_shape=(2000,2000), dtype=np.float32):
+                           out_shape=(2000, 2000), dtype=np.float32):
     west, east, south, north = points_area
     geometries = []
 
@@ -90,7 +92,7 @@ def get_image_neighborhood(boros: dict, points_area,
     return out, colors
 
 
-def get_image_boroughs(boros: dict, points_area, out_shape=(2000,2000),
+def get_image_boroughs(boros: dict, points_area, out_shape=(2000, 2000),
                        dtype=np.float32):
     west, east, south, north = points_area
 
