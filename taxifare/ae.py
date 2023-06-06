@@ -6,8 +6,7 @@ import polars as pl
 from tqdm.auto import tqdm
 from tensorflow import keras
 
-from taxifare.data import iterate_df
-from taxifare.models import DataPolicy
+from taxifare.models import DataPolicy, iterate_df
 
 OPTIMAL_THRESHOLD = 0.2011901901901902
 TO_STD = ('fare_amount', 'pickup_longitude', 'pickup_latitude',
