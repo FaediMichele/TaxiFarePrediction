@@ -407,3 +407,35 @@ def euclidian_distance(df: pl.DataFrame, name='travel_distance') -> pl.Series:
             + (pl.col('pickup_longitude') - pl.col('dropoff_longitude')) ** 2)
           .alias(name)
         )[name]
+
+
+def compute_graph_distances(G: nx.Graph,
+                            weight='travel_time',
+                            dtype=np.half) -> np.ndarray:
+    """Return the matrix of distances between nodes of G.
+
+    The result is a square matrix that maps distances between two nodes.
+    For simplicity, the graph is assumed to be strongly connected i.e.
+    all nodes of the matrix will hold an admissible value.
+
+    In case of an undirected graph, the matrix is naturally
+    symmetrical.
+
+    Half precision is used by default to prevent ungodly amounts of
+    required memory.
+
+    Computation on a ~50k nodes graph requires ~4 hours and produces
+    a matrix of about 4GB. Required memory/storage could be halved by
+    dropping one symmetrical half of the matrix. A speedup could be
+    obtained through a multiprocessing implementation.
+    """
+    rows = []
+    for source in tqdm(G.nodes, desc='computing distances'):
+        distances = nx.single_source_dijkstra_path_length(G, source,
+                                                          weight=weight)
+
+        # Assuming G.nodes is sorted
+        rows.append(np.fromiter(map(distances.get, G.nodes),
+                                dtype=dtype))
+
+    return np.stack(rows)
