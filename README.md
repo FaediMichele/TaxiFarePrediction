@@ -1,4 +1,6 @@
+![taxifare-github-header](https://github.com/FaediMichele/TaxiFarePrediction/assets/12080380/9f2b4153-6a0b-4e9a-b508-6ee7c87406e3)
 # TaxiFarePrediction
+
 Machine learning applied to taxi rides fare prediction in New York city. Data comes from the Kaggle challenge: [New York City Taxi Fare Prediction
 ](https://www.kaggle.com/c/new-york-city-taxi-fare-prediction).
 
